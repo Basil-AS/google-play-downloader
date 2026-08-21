@@ -3,6 +3,8 @@ name: Import Google Play Downloader
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -10,12 +12,12 @@ permissions:
 
 jobs:
   import:
-    if: ${{ !contains(github.event.head_commit.message || '', '[import-complete]') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout target
+      - name: Checkout target master
         uses: actions/checkout@v4
         with:
+          ref: master
           fetch-depth: 0
 
       - name: Import prepared project tree
