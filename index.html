@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Google Play APK Downloader — original APK, split APK/APKS, OBB, architecture variants and historical versionCode when Google still serves them.">
+  <title>Google Play APK Downloader</title>
+  <link rel="stylesheet" href="./assets/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Google Play APK Downloader"><span class="brand-mark" aria-hidden="true">▶</span><span><b>Google Play</b><small>APK Downloader</small></span></a>
+    <div class="header-actions"><span id="backendState" class="status status-off">backend: неизвестно</span><button id="settingsButton" class="button ghost" type="button">Backend</button></div>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">ORIGINAL GOOGLE PLAY DELIVERY</p>
+      <h1>APK, split APK, APKS и варианты архитектур</h1>
+      <p class="lead">Получает файлы напрямую из Google Play delivery/CDN. Поддерживает ARM64, ARMv7, x86_64, x86, Android TV, языковые splits и указанный <code>versionCode</code>, если Google ещё его отдаёт.</p>
+      <form id="searchForm" class="searchbar"><input id="query" autocomplete="off" spellcheck="false" placeholder="Название или package: org.videolan.vlc" aria-label="Поиск приложения"><button class="button primary" type="submit">Найти</button></form>
+      <div id="searchResults" class="search-results" hidden></div>
+    </section>
+
+    <section id="optionsCard" class="panel" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">DELIVERY OPTIONS</p><h2 id="selectedPackage">Параметры скачивания</h2></div><button id="clearSelection" class="button ghost" type="button">Сменить приложение</button></div>
+      <form id="resolveForm" class="options-grid">
+        <fieldset>
+          <legend>Архитектуры / устройства</legend>
+          <label class="check"><input type="checkbox" name="arch" value="arm64" checked><span><b>ARM64</b><small>arm64-v8a · современные телефоны</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="armv7"><span><b>ARMv7</b><small>armeabi-v7a · старые 32-bit устройства</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="x86_64"><span><b>x86_64</b><small>эмуляторы / Chromebook / desktop</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="x86"><span><b>x86</b><small>старые 32-bit эмуляторы</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="tv"><span><b>Android TV</b><small>TV/Google TV device profiles</small></span></label>
+          <div class="mini-actions"><button id="selectAllArch" type="button" class="text-button">Выбрать всё</button><button id="onlyArm64" type="button" class="text-button">Только ARM64</button></div>
+        </fieldset>
+        <fieldset>
+          <legend>Версия и локали</legend>
+          <label class="field"><span>versionCode <small>(пусто = последняя для профиля)</small></span><input id="versionCode" inputmode="numeric" pattern="[0-9]*" placeholder="например 231205015"></label>
+          <label class="field"><span>Языки <small>(через запятую)</small></span><input id="locales" value="ru,en" placeholder="ru,en,de,zh-CN"></label>
+          <label class="switch-row"><input id="deepScan" type="checkbox"><span><b>Глубокий перебор профилей</b><small>Ищет разные ABI/DPI/SDK-выдачи и удаляет дубликаты. Медленнее и сильнее нагружает Play/dispenser.</small></span></label>
+          <label class="switch-row"><input id="forceRefresh" type="checkbox"><span><b>Обновить Play token</b><small>Игнорировать кэшированный токен при первом запросе.</small></span></label>
+        </fieldset>
+        <div class="resolve-actions"><button id="resolveButton" class="button primary wide" type="submit">Получить варианты Google Play</button><p class="muted">Исторические версии не архивируются Google Play “для всех”: поле versionCode сработает только пока конкретная версия доступна хотя бы одному совместимому профилю.</p></div>
+      </form>
+    </section>
+
+    <section id="progressCard" class="panel progress-card" hidden><div class="spinner" aria-hidden="true"></div><div><h2>Запрашиваю Google Play…</h2><p id="progressText">Получаю device token, details и delivery manifest.</p></div></section>
+
+    <section id="manifestCard" class="panel" hidden>
+      <div class="panel-heading manifest-head"><div><p class="eyebrow">RESOLVED DELIVERY</p><h2 id="manifestTitle">Приложение</h2><p id="manifestMeta" class="muted"></p></div><a id="allZip" class="button" href="#">Все варианты ZIP</a></div>
+      <div class="notice original"><b>Оригиналы:</b> base/split/OBB/.dm скачиваются как Google их выдал. <b>Merged APK:</b> splits объединяются APKEditor и подписываются локальным ключом backend — это уже не оригинальная Google-подпись.</div>
+      <div id="variants" class="variants"></div>
+      <details id="diagnosticsBlock" class="diagnostics" hidden><summary>Диагностика несовместимых профилей</summary><pre id="diagnostics"></pre></details>
+    </section>
+
+    <section class="info-grid">
+      <article><span>01</span><h3>Original delivery</h3><p>Файлы идут из Google Play FDFE/CDN, а не из APKMirror/APKPure и подобных каталогов.</p></article>
+      <article><span>02</span><h3>APKS</h3><p>Готовый ZIP/APKS-набор base + splits с SAI metadata. Можно ставить split-инсталлятором.</p></article>
+      <article><span>03</span><h3>All architectures</h3><p>ARM64, ARMv7, x86_64, x86 и Android TV. Deep Scan перебирает встроенные device profiles и дедуплицирует одинаковые выдачи.</p></article>
+      <article><span>04</span><h3>Merged APK</h3><p>Опциональный standalone APK через APKEditor. Он переподписан и может не подходить приложениям с Play Integrity или проверкой подписи.</p></article>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" class="dialog-card">
+      <div class="panel-heading"><div><p class="eyebrow">CONNECTION</p><h2>Backend API</h2></div><button value="cancel" class="icon-button" aria-label="Закрыть">×</button></div>
+      <p class="muted">GitHub Pages — статический фронт. Google Play authentication остаётся на вашем backend и не попадает в браузер.</p>
+      <label class="field"><span>API URL</span><input id="backendUrl" placeholder="https://play-api.example.com"></label>
+      <div class="dialog-actions"><button id="testBackend" type="button" class="button">Проверить</button><button id="saveBackend" value="default" class="button primary">Сохранить</button></div>
+      <pre id="backendTest" class="test-output" hidden></pre>
+    </form>
+  </dialog>
+
+  <footer><span>Unofficial Google Play client · use a separate Google account.</span><a href="https://github.com/Basil-AS" rel="noopener">Basil-AS</a></footer>
+  <script src="./assets/app.js" defer></script>
+</body>
+</html>
