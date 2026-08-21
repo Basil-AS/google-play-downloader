@@ -7,8 +7,9 @@
   function guessBackend() {
     const qs = new URLSearchParams(location.search).get('api');
     if (qs) {
-      localStorage.setItem('playDownloaderBackend', qs.replace(/\/$/, ''));
-      return qs.replace(/\/$/, '');
+      const value = qs.replace(/\/$/, '');
+      localStorage.setItem('playDownloaderBackend', value);
+      return value;
     }
     const stored = localStorage.getItem('playDownloaderBackend');
     if (stored) return stored.replace(/\/$/, '');
@@ -22,18 +23,34 @@
     return `${state.backend}${path}`;
   }
 
-  async function fetchJson(path, init = {}) {
-    const response = await fetch(api(path), {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
-    });
-    let data = null;
-    try { data = await response.json(); } catch { /* no json */ }
-    if (!response.ok) {
-      const message = data?.detail || data?.error || `${response.status} ${response.statusText}`;
-      throw new Error(typeof message === 'string' ? message : JSON.stringify(message));
+  async function fetchJson(path, init = {}, timeoutMs = 15000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(api(path), {
+        ...init,
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
+      });
+      let data = null;
+      try { data = await response.json(); } catch { /* no json */ }
+      if (!response.ok) {
+        const message = data?.detail || data?.error || `${response.status} ${response.statusText}`;
+        const error = new Error(typeof message === 'string' ? message : JSON.stringify(message));
+        error.status = response.status;
+        throw error;
+      }
+      return data;
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        const timeout = new Error(`Backend не ответил за ${Math.round(timeoutMs / 1000)} с. Запрос остановлен, чтобы интерфейс не зависал.`);
+        timeout.status = 408;
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    return data;
   }
 
   function formatBytes(bytes) {
@@ -66,7 +83,7 @@
     }
     setStatus('off', 'backend: проверка…');
     try {
-      const data = await fetchJson('/api/status');
+      const data = await fetchJson('/api/status', {}, 8000);
       setStatus(data.linked ? 'on' : 'error', data.linked ? 'backend: ready' : 'backend: not linked');
       if (showOutput) {
         $('backendTest').hidden = false;
@@ -88,7 +105,7 @@
     box.className = 'error-box';
     box.textContent = error?.message || String(error);
     where.prepend(box);
-    setTimeout(() => box.remove(), 14000);
+    setTimeout(() => box.remove(), 16000);
   }
 
   function selectPackage(pkg, title = '') {
@@ -104,22 +121,24 @@
   async function search(query) {
     const results = $('searchResults');
     results.hidden = false;
-    results.innerHTML = '<div class="empty">Ищу в Google Play…</div>';
-    if (query.includes('.') && !query.includes(' ')) {
-      const direct = `<button class="search-result" data-package="${escapeHtml(query)}"><span><b>Открыть package напрямую</b><small>${escapeHtml(query)}</small></span><code>package</code></button>`;
-      results.innerHTML = direct + '<div class="empty">Дополнительно ищу по каталогу…</div>';
+    const isPackage = /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$/.test(query);
+    if (isPackage) {
+      results.innerHTML = `<button class="search-result" data-package="${escapeHtml(query)}"><span><b>Открыть package напрямую</b><small>${escapeHtml(query)}</small></span><code>package</code></button><div class="empty">Параллельно ищу по каталогу…</div>`;
+    } else {
+      results.innerHTML = '<div class="empty">Ищу в Google Play…</div>';
     }
     try {
-      const data = await fetchJson(`/api/search?q=${encodeURIComponent(query)}&limit=14`);
+      const data = await fetchJson(`/api/search?q=${encodeURIComponent(query)}&limit=14`, {}, 20000);
       const rows = data.map((item) => `
         <button class="search-result" data-package="${escapeHtml(item.package)}" data-title="${escapeHtml(item.title)}">
           <span><b>${escapeHtml(item.title || item.package)}</b><small>${escapeHtml(item.creator || item.package)}</small></span>
           <code>${escapeHtml(item.package)}</code>
         </button>`).join('');
-      const direct = query.includes('.') && !data.some((x) => x.package === query)
+      const direct = isPackage && !data.some((x) => x.package === query)
         ? `<button class="search-result" data-package="${escapeHtml(query)}"><span><b>Открыть package напрямую</b><small>${escapeHtml(query)}</small></span><code>package</code></button>` : '';
       results.innerHTML = direct + (rows || '<div class="empty">Ничего не найдено. Если знаете package name — вставьте его полностью.</div>');
     } catch (error) {
+      if (isPackage) return;
       results.innerHTML = '';
       showError(results, error);
     }
@@ -133,35 +152,64 @@
     return $('locales').value.split(',').map((x) => x.trim()).filter(Boolean);
   }
 
+  function startProgress(deepScan, arches) {
+    const started = Date.now();
+    const update = () => {
+      const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000));
+      let text;
+      if (deepScan) {
+        if (seconds < 4) text = 'Проверяю кэш device token и готовлю профили.';
+        else if (seconds < 12) text = `Deep Scan: параллельно проверяю ${arches.length} архитектур(ы).`;
+        else text = 'Deep Scan: Google Play отвечает по профилям; медленные профили ограничены таймаутом.';
+      } else if (seconds < 3) {
+        text = 'Проверяю кэш device token.';
+      } else if (seconds < 8) {
+        text = `Получаю details → purchase → delivery для ${arches.join(', ')}.`;
+      } else {
+        text = 'Google Play отвечает медленнее обычного; запрос ограничен таймаутом и не будет висеть бесконечно.';
+      }
+      $('progressText').textContent = `${text} · ${seconds} с`;
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }
+
   async function resolveManifest() {
     const arches = selectedArchitectures();
     if (!arches.length) throw new Error('Выберите хотя бы одну архитектуру');
     const versionRaw = $('versionCode').value.trim();
     if (versionRaw && !/^\d+$/.test(versionRaw)) throw new Error('versionCode должен быть положительным числом');
 
+    const deepScan = $('deepScan').checked;
+    const body = JSON.stringify({
+      package: state.selectedPackage,
+      architectures: arches,
+      locales: selectedLocales(),
+      versionCode: versionRaw ? Number(versionRaw) : null,
+      deepScan,
+      forceRefresh: $('forceRefresh').checked,
+    });
+
     $('progressCard').hidden = false;
     $('manifestCard').hidden = true;
     $('resolveButton').disabled = true;
-    $('progressText').textContent = $('deepScan').checked
-      ? 'Deep Scan: перебираю device profiles и дедуплицирую разные delivery manifests.'
-      : 'Получаю details → purchase token → delivery manifest для выбранных архитектур.';
     $('progressCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const stopProgress = startProgress(deepScan, arches);
 
     try {
-      const manifest = await fetchJson('/api/resolve', {
-        method: 'POST',
-        body: JSON.stringify({
-          package: state.selectedPackage,
-          architectures: arches,
-          locales: selectedLocales(),
-          versionCode: versionRaw ? Number(versionRaw) : null,
-          deepScan: $('deepScan').checked,
-          forceRefresh: $('forceRefresh').checked,
-        }),
-      });
+      const timeoutMs = deepScan ? 135000 : 45000;
+      let manifest;
+      try {
+        manifest = await fetchJson('/api/resolve-fast', { method: 'POST', body }, timeoutMs);
+      } catch (error) {
+        if (error.status !== 404 || error.message !== 'Not Found') throw error;
+        manifest = await fetchJson('/api/resolve', { method: 'POST', body }, timeoutMs);
+      }
       state.manifest = manifest;
       renderManifest(manifest);
     } finally {
+      stopProgress();
       $('progressCard').hidden = true;
       $('resolveButton').disabled = false;
     }
@@ -173,7 +221,8 @@
 
   function renderManifest(manifest) {
     $('manifestTitle').textContent = manifest.title || manifest.package;
-    $('manifestMeta').textContent = [manifest.package, manifest.developer, `${manifest.variants.length} variant(s)`, `versionCode: ${manifest.versionCodes.join(', ')}`].filter(Boolean).join(' · ');
+    const speed = manifest.cached ? 'cache hit' : (manifest.resolver?.parallel ? `parallel ×${manifest.resolver.workers}` : 'live');
+    $('manifestMeta').textContent = [manifest.package, manifest.developer, `${manifest.variants.length} variant(s)`, `versionCode: ${manifest.versionCodes.join(', ')}`, speed].filter(Boolean).join(' · ');
     $('allZip').href = absoluteBackendPath(manifest.archives.allZip);
 
     $('variants').innerHTML = manifest.variants.map((variant) => {

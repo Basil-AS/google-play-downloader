@@ -90,15 +90,9 @@ In production, put Caddy/nginx/Traefik in front of `127.0.0.1:8080` and expose i
 
 ### 2. GitHub Pages
 
-The workflow `.github/workflows/pages.yml` publishes only:
+This repository uses GitHub Pages **branch deployment**: `master` → `/ (root)`. The native `pages build and deployment` workflow is the CD path; there is intentionally no second custom deploy-pages workflow. This matches the current repository Pages setting and avoids duplicate/failing deployments.
 
-- `index.html`;
-- `assets/`;
-- `.nojekyll`.
-
-In the repository settings select **Pages → Source → GitHub Actions** once. Then pushes to `master` deploy the frontend automatically.
-
-Open the site, press **Backend**, enter the HTTPS API URL, and press **Save**. The URL is stored only in browser `localStorage`. You can also open the page once with `?api=https://play-api.example.com`.
+Open <https://basil-as.github.io/google-play-downloader/>, press **Backend**, enter the HTTPS API URL, and press **Save**. The URL is stored only in browser `localStorage`. You can also open the page once with `?api=https://play-api.example.com`.
 
 ## Backend API
 
@@ -108,7 +102,8 @@ Open the site, press **Backend**, enter the HTTPS API URL, and press **Save**. T
 | `GET /api/status` | pairing/merge capability status |
 | `GET /api/search?q=...` | Google Play search |
 | `GET /api/app/{package}` | current metadata + known split names |
-| `POST /api/resolve` | resolve one or many architecture/device deliveries |
+| `POST /api/resolve-fast` | primary resolver: cached auth/results, parallel architectures, bounded timeout |
+| `POST /api/resolve` | compatibility resolver using the same cached auth layer |
 | `GET /api/file/{manifest}/{file}` | stream one original Play file |
 | `GET /api/archive/{manifest}?variant=...&format=zip` | original files ZIP |
 | `...&format=apks` | SAI-compatible APKS |
@@ -151,15 +146,38 @@ Use APKS/original splits when signature fidelity matters.
 - The backend uses one uvicorn worker because its manifest cache is process-local. Put a reverse proxy in front rather than increasing workers unless you replace the cache with Redis or another shared store.
 - The merged-APK signing key is local to the backend and should be persisted if you need repeatable signatures across merges.
 
-## Verification
+## Performance
+
+The production container runs `fast_app:app`, which wraps the protocol implementation with backend-oriented performance controls:
+
+- in-memory device/auth token cache (45 minutes by default), including when `GPLAYDL_EMAIL` is pinned;
+- background ARM64 token warm-up on container startup;
+- 3-minute cache for identical resolve requests;
+- parallel resolution of selected architectures (up to 5 workers);
+- bounded normal/deep-scan timeouts so the UI does not wait forever;
+- frontend request timeouts and elapsed-time progress instead of an indefinite spinner.
+
+Tune these with `AUTH_MEMORY_TTL`, `RESOLVE_CACHE_TTL`, `RESOLVE_WORKERS`, `RESOLVE_TIMEOUT`, and `DEEP_SCAN_TIMEOUT`.
+
+## CI / CD and verification
+
+Local checks:
 
 ```bash
-python -m py_compile backend/app.py
+python -m py_compile backend/app.py backend/fast_app.py
+PYTHONPATH=backend pytest -q
 node --check assets/app.js
-docker compose config
+cp backend/.env.example backend/.env
+docker compose config -q
+rm backend/.env
 ```
 
-The GitHub Actions verification workflow runs static checks on every push and pull request.
+GitHub Actions `CI` installs the real backend dependencies, imports the FastAPI app, checks the route contract, runs unit tests for token caching/parallel resolution, validates JavaScript and validates Docker Compose on every pull request and every push to `master`. GitHub Pages CD is handled by GitHub's native branch deployment from `master`. A small cleanup workflow removes merged temporary branches.
+
+## Contributors
+
+- **Basil-AS** — project owner and maintainer.
+- **OpenAI ChatGPT (GPT-5.6 Sol)** — AI-assisted architecture, implementation, testing, performance work, CI/CD and documentation. See [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
 
 ## Credits / licenses
 
