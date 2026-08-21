@@ -72,7 +72,7 @@ def _fast_require_auth(arch: str, force_refresh: bool = False) -> dict:
                 force_refresh=force_refresh,
                 email=legacy.ACCOUNT_EMAIL,
             )
-        except Exception as exc:  # preserve the public API's error contract
+        except Exception as exc:
             raise HTTPException(502, f"Google Play authentication failed: {exc}") from exc
 
         if not auth or not auth.get("authToken"):
@@ -89,6 +89,22 @@ def _fast_require_auth(arch: str, force_refresh: bool = False) -> dict:
 # Existing /api/search, /api/app and legacy /api/resolve functions look this
 # name up in the app module at call time, so they benefit from the cache too.
 legacy._require_auth = _fast_require_auth
+
+
+def _warm_default_auth() -> None:
+    if not legacy._linked():
+        return
+    try:
+        _fast_require_auth("arm64")
+    except Exception:
+        # Startup must remain healthy even if the dispenser/Google is briefly
+        # unavailable; the first user request will surface the real error.
+        return
+
+
+@app.on_event("startup")
+def warm_default_auth() -> None:
+    threading.Thread(target=_warm_default_auth, name="play-auth-warmup", daemon=True).start()
 
 
 def _request_key(request: legacy.ResolveRequest) -> str:
@@ -120,9 +136,10 @@ def _cached_resolve(request: legacy.ResolveRequest) -> dict | None:
 def _remember_resolve(request: legacy.ResolveRequest, manifest: legacy.Manifest, diagnostics: dict[str, list[str]]) -> None:
     if RESOLVE_CACHE_TTL <= 0:
         return
+    now = time.monotonic()
     with _RESOLVE_CACHE_LOCK:
-        _RESOLVE_CACHE[_request_key(request)] = (time.monotonic(), manifest.id, diagnostics)
-        stale = [key for key, value in _RESOLVE_CACHE.items() if time.monotonic() - value[0] >= RESOLVE_CACHE_TTL]
+        _RESOLVE_CACHE[_request_key(request)] = (now, manifest.id, diagnostics)
+        stale = [key for key, value in _RESOLVE_CACHE.items() if now - value[0] >= RESOLVE_CACHE_TTL]
         for key in stale:
             _RESOLVE_CACHE.pop(key, None)
 
