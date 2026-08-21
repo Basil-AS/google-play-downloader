@@ -1,0 +1,40 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Python syntax
+        run: python -m py_compile backend/app.py
+      - name: JavaScript syntax
+        run: node --check assets/app.js
+      - name: Verify required frontend files
+        run: |
+          test -s index.html
+          test -s assets/app.css
+          test -s assets/app.js
+          grep -q 'Google Play APK Downloader' index.html
+          grep -q '/api/resolve' assets/app.js
+      - name: Validate compose file structure
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('docker-compose.yml').read_text()
+          assert 'backend:' in text
+          assert './backend' in text
+          assert '127.0.0.1:8080:8080' in text
+          PY
