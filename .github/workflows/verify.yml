@@ -35,15 +35,18 @@ jobs:
       - name: Provider parser tests
         run: node --test tests/provider.test.cjs
 
-      - name: Static Pages contract
+      - name: Static Pages files
         run: |
           test -s index.html
           test -s assets/app.css
           test -s assets/app.js
           test -s assets/provider-apkcombo.js
           test -f .nojekyll
+
+      - name: Static provider contract
+        run: |
           grep -q '100% STATIC' index.html
-          grep -q 'APKComboProvider' assets/app.js
+          grep -q 'ApkComboProvider' assets/app.js
           grep -q 'https://apkcombo.com' assets/provider-apkcombo.js
           grep -q 'https://corsproxy.io/' assets/provider-apkcombo.js
           grep -q 'cdn.jsdelivr.net/npm/jszip@3.10.1' index.html
