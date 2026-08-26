@@ -1,6 +1,8 @@
 name: Live Google Play smoke
 
 on:
+  push:
+    branches: [master]
   pull_request:
     branches: [master]
   workflow_dispatch:
