@@ -4,93 +4,83 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Static Google Play package downloader: APK/XAPK variants and old versions in the browser, without a server, account, extension or installation.">
+  <meta name="description" content="Browser-only Google Play downloader: anonymous auth, direct FDFE delivery, APK/split APK/OBB from Google CDN.">
   <title>Google Play APK Downloader</title>
-  <link rel="stylesheet" href="./assets/app.css?v=20260826-static1">
+  <link rel="stylesheet" href="./assets/app.css?v=20260826-play1">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./" aria-label="Google Play APK Downloader">
-      <span class="brand-mark" aria-hidden="true">▶</span>
-      <span><b>Google Play</b><small>APK Downloader</small></span>
-    </a>
+    <a class="brand" href="./" aria-label="Google Play APK Downloader"><span class="brand-mark" aria-hidden="true">▶</span><span><b>Google Play</b><small>APK Downloader</small></span></a>
     <div class="header-actions"><span id="providerState" class="status status-off">static: loading</span></div>
   </header>
 
   <main class="shell">
     <section class="hero">
-      <p class="eyebrow">100% STATIC · GITHUB PAGES + BROWSER</p>
-      <h1>APK, XAPK, APKS и все доступные ABI</h1>
-      <p class="lead">Никакого VPS, Docker, backend, Google-аккаунта или расширения. Страница в браузере получает публичный каталог вариантов APKCombo через CORS relay и отправляет скачивание напрямую провайдеру.</p>
+      <p class="eyebrow">100% STATIC · DIRECT GOOGLE PLAY FDFE</p>
+      <h1>APK и split APK прямо из Google Play</h1>
+      <p class="lead">Без VPS, Docker, backend и расширения. Браузер получает anonymous Google Play auth bundle, вызывает Google FDFE <code>details → purchase → delivery</code> через публичный CORS relay и скачивает файлы с Google CDN.</p>
       <form id="searchForm" class="searchbar">
-        <input id="query" autocomplete="off" spellcheck="false" placeholder="Название, com.example.app или ссылка Google Play" aria-label="Поиск приложения">
-        <button class="button primary" type="submit">Найти</button>
+        <input id="query" autocomplete="off" spellcheck="false" placeholder="Название, com.example.app или ссылка Google Play" aria-label="Поиск Google Play">
+        <button class="button primary" type="submit">Найти в Google Play</button>
       </form>
       <div id="searchResults" class="search-results" hidden></div>
     </section>
 
     <section id="progressCard" class="panel progress-card" hidden>
       <div class="spinner" aria-hidden="true"></div>
-      <div class="progress-copy"><h2>Запрашиваю каталог… <span id="progressTime" class="progress-time"></span></h2><p id="progressText">Подготавливаю browser-only запрос.</p></div>
+      <div class="progress-copy"><h2>Запрашиваю Google Play… <span id="progressTime" class="progress-time"></span></h2><p id="progressText">Подготавливаю browser-only запрос.</p></div>
     </section>
 
     <section id="appCard" class="panel" hidden>
       <div class="panel-heading">
-        <div><p class="eyebrow">PACKAGE</p><h2 id="appTitle">Приложение</h2><p id="appMeta" class="muted"></p><code id="appPackage" class="package-code"></code></div>
-        <div class="archive-actions"><a id="openProvider" class="button ghost" href="#" target="_blank" rel="noopener noreferrer">Страница провайдера</a><button id="resetApp" class="button ghost" type="button">Сменить</button></div>
+        <div><p class="eyebrow">GOOGLE PLAY PACKAGE</p><h2 id="appTitle">Приложение</h2><p id="appMeta" class="muted"></p><code id="appPackage" class="package-code"></code></div>
+        <div class="archive-actions"><a id="openPlay" class="button ghost" href="#" target="_blank" rel="noopener noreferrer">Google Play</a><button id="resetApp" class="button ghost" type="button">Сменить</button></div>
       </div>
 
-      <div class="client-note"><b>Client-only:</b> список вариантов и история версий обрабатываются JavaScript в этом браузере. Секретов, токенов и серверной сессии нет.</div>
+      <div class="client-note"><b>Источник — Google Play.</b> APKCombo/APKPure/APKMirror и другие каталоги не используются. Публичный relay нужен только из-за browser CORS и для передачи Google download cookie.</div>
 
-      <div class="static-options">
-        <label class="field"><span>Версия</span><select id="versionSelect"></select></label>
-        <label class="switch-row compact"><input id="freshProvider" type="checkbox"><span><b>Обновить каталог</b><small>Игнорировать краткий session cache.</small></span></label>
-        <button id="loadVariants" class="button primary wide" type="button">Показать варианты этой версии</button>
+      <div class="options-grid">
+        <fieldset>
+          <legend>Архитектуры / профили Google Play</legend>
+          <label class="check"><input type="checkbox" name="arch" value="arm64" checked><span><b>ARM64</b><small>arm64-v8a · основной профиль</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="armv7"><span><b>ARMv7</b><small>armeabi-v7a</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="x86_64"><span><b>x86_64</b><small>64-bit emulator/ChromeOS</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="x86"><span><b>x86</b><small>32-bit Intel</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="tv"><span><b>Android TV</b><small>leanback/television profile</small></span></label>
+          <div class="mini-actions"><button id="selectAllArch" type="button" class="text-button">Выбрать всё</button><button id="onlyArm64" type="button" class="text-button">Только ARM64</button></div>
+        </fieldset>
+        <fieldset>
+          <legend>Получение</legend>
+          <label class="switch-row"><input id="freshAuth" type="checkbox"><span><b>Новый anonymous token</b><small>Игнорировать 45-минутный browser cache.</small></span></label>
+          <div class="notice original"><b>Google Play delivery:</b> для каждого выбранного профиля выполняются details → purchase → delivery. Показаны base APK, split APK и дополнительные файлы, которые Google реально отдал этому профилю.</div>
+        </fieldset>
+        <div class="resolve-actions"><button id="resolveButton" class="button primary wide" type="button">Получить файлы из Google Play</button><p class="muted">Бесплатные приложения. Доступность зависит от anonymous Google account, региона, device profile и staged rollout Google.</p></div>
       </div>
     </section>
 
     <section id="variantsCard" class="panel" hidden>
       <div class="panel-heading manifest-head">
-        <div><p class="eyebrow">AVAILABLE BUILDS</p><h2>Варианты APK/XAPK</h2><p class="muted">Показано <span id="variantCount">0</span>. Фильтрация выполняется локально.</p></div>
+        <div><p class="eyebrow">GOOGLE DELIVERY</p><h2>Полученные профили</h2><p class="muted">Успешно: <span id="variantCount">0</span>. Файлы перечислены из protobuf delivery response Google.</p></div>
       </div>
-
-      <div id="filters" class="filters-grid">
-        <fieldset>
-          <legend>Архитектура</legend>
-          <label class="check inline"><input type="checkbox" name="arch" value="arm64" checked><span><b>ARM64</b><small>arm64-v8a</small></span></label>
-          <label class="check inline"><input type="checkbox" name="arch" value="armv7" checked><span><b>ARMv7</b><small>armeabi-v7a</small></span></label>
-          <label class="check inline"><input type="checkbox" name="arch" value="x86_64" checked><span><b>x86_64</b></span></label>
-          <label class="check inline"><input type="checkbox" name="arch" value="x86" checked><span><b>x86</b></span></label>
-          <label class="check inline"><input id="includeUniversal" type="checkbox" checked><span><b>Universal</b><small>ABI не указан</small></span></label>
-          <div class="mini-actions"><button id="selectAllArch" type="button" class="text-button">Все ABI</button><button id="onlyArm64" type="button" class="text-button">Только ARM64</button></div>
-        </fieldset>
-        <fieldset>
-          <legend>Формат</legend>
-          <label class="check inline"><input type="checkbox" name="format" value="APK" checked><span><b>APK</b><small>standalone, если доступен</small></span></label>
-          <label class="check inline"><input type="checkbox" name="format" value="XAPK" checked><span><b>XAPK</b><small>base + splits/OBB</small></span></label>
-          <label class="check inline"><input type="checkbox" name="format" value="APKS" checked><span><b>APKS</b><small>если провайдер отдаёт готовый</small></span></label>
-        </fieldset>
-      </div>
-
-      <div class="notice original"><b>Скачать</b> открывает свежую подписанную ссылку APKCombo. <b>Сделать APKS</b> скачивает APK/XAPK в память этого браузера, извлекает APK-файлы и локально формирует SAI-compatible <code>.apks</code>. Для очень больших XAPK используйте прямое скачивание.</div>
       <div id="variants" class="variants"></div>
+      <details id="diagnosticsBlock" class="diagnostics" hidden><summary>Неуспешные профили</summary><pre id="diagnostics"></pre></details>
     </section>
 
     <section class="info-grid">
-      <article><span>01</span><h3>Без сервера</h3><p>В репозитории нет backend-кода, контейнера, API URL или серверной авторизации.</p></article>
-      <article><span>02</span><h3>Все опубликованные ABI</h3><p>ARM64, ARMv7, x86_64, x86 и universal показываются по данным страницы конкретной версии.</p></article>
-      <article><span>03</span><h3>Старые версии</h3><p>История берётся из публичного каталога APKCombo; выбираете версию и получаете её варианты.</p></article>
-      <article><span>04</span><h3>APKS в браузере</h3><p>Конвертация выполняется локально через JSZip. Файл не отправляется на наш сервер — его нет.</p></article>
+      <article><span>01</span><h3>Google Play FDFE</h3><p>Метаданные и delivery URL получаются с android.clients.google.com, а не из зеркала.</p></article>
+      <article><span>02</span><h3>Anonymous auth</h3><p>Временный auth bundle выдаёт Aurora dispenser. Личный Google-аккаунт не требуется.</p></article>
+      <article><span>03</span><h3>Splits</h3><p>Base APK и config splits берутся из Google delivery response для выбранного device profile.</p></article>
+      <article><span>04</span><h3>APKS локально</h3><p>При необходимости браузер скачивает Google APK-файлы и упаковывает их в SAI-compatible .apks.</p></article>
     </section>
   </main>
 
   <footer>
-    <span>Provider: APKCombo · CORS relay: corsproxy.io · unofficial client</span>
+    <span>Source: Google Play FDFE/CDN · anonymous auth: Aurora · transport: public CORS relay</span>
     <span><a href="https://github.com/Basil-AS" rel="noopener">Basil-AS</a> · AI-assisted by OpenAI ChatGPT</span>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="./assets/provider-apkcombo.js?v=20260826-static1"></script>
-  <script src="./assets/app.js?v=20260826-static1" defer></script>
+  <script src="./assets/play-client.js?v=20260826-play1"></script>
+  <script src="./assets/app.js?v=20260826-play1" defer></script>
 </body>
 </html>
