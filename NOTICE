@@ -1,14 +1,16 @@
 Google Play APK Downloader
 
 This project is an unofficial, static browser client maintained by Basil-AS.
-It is not affiliated with Google LLC or APKCombo.
+It is not affiliated with Google LLC, Aurora Store or the relay provider.
 
 Runtime third-party services/libraries:
-- APKCombo public catalogue/download pages: https://apkcombo.com/
+- Google Play Android FDFE / Google CDN: https://android.clients.google.com/
+- Aurora anonymous authentication dispenser: https://auroraoss.com/api/auth
 - corsproxy.io public CORS relay: https://corsproxy.io/
 - JSZip 3.10.1 loaded from jsDelivr: https://www.jsdelivr.com/package/npm/jszip
 
-The project does not operate a backend server and does not store Google credentials.
-Files and metadata exposed by third-party providers remain subject to their own terms and licenses.
+APKCombo, APKPure, APKMirror and other APK mirrors/catalogues are not used by the application.
+
+The project does not operate a backend server and does not request or store a user's personal Google credentials. Temporary anonymous auth data is stored in the user's browser cache. External services remain subject to their own terms, availability, logging and licenses.
 
 AI-assisted engineering attribution is documented in CONTRIBUTORS.md and relevant commit trailers.

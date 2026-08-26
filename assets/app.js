@@ -1,189 +1,89 @@
 (() => {
   'use strict';
 
-  const P = window.ApkComboProvider;
-  if (!P) throw new Error('ApkComboProvider is not loaded');
+  const P = window.GooglePlayClient;
+  if (!P) throw new Error('GooglePlayClient is not loaded');
   const $ = (id) => document.getElementById(id);
-  const state = { app: null, variants: [], visible: [], controller: null, startedAt: 0, progressTimer: null };
+  const state = { app: null, resolved: [], controller: null, startedAt: 0, timer: null };
 
-  function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
-  }
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 
-  function setStatus(kind, text) {
-    const node = $('providerState');
-    node.className = `status status-${kind}`;
-    node.textContent = text;
-  }
-
-  function showError(where, error) {
-    const old = where.querySelector('.error-box');
-    if (old) old.remove();
-    const box = document.createElement('div');
-    box.className = 'error-box';
-    box.textContent = error?.message || String(error);
-    where.prepend(box);
-    setTimeout(() => box.remove(), 18000);
-  }
-
-  function startProgress(text) {
-    state.startedAt = performance.now();
-    $('progressCard').hidden = false;
-    $('progressText').textContent = text;
-    clearInterval(state.progressTimer);
-    state.progressTimer = setInterval(() => {
-      const seconds = Math.floor((performance.now() - state.startedAt) / 1000);
-      $('progressTime').textContent = `${seconds} с`;
-    }, 250);
-  }
-
+  function setStatus(kind, text) { const n = $('providerState'); n.className = `status status-${kind}`; n.textContent = text; }
+  function startProgress(text) { state.startedAt = performance.now(); $('progressCard').hidden = false; $('progressText').textContent = text; $('progressTime').textContent = '0 с'; clearInterval(state.timer); state.timer = setInterval(() => { $('progressTime').textContent = `${Math.floor((performance.now() - state.startedAt) / 1000)} с`; }, 250); }
   function progress(text) { $('progressText').textContent = text; }
-  function stopProgress() { clearInterval(state.progressTimer); state.progressTimer = null; $('progressCard').hidden = true; $('progressTime').textContent = ''; }
+  function stopProgress() { clearInterval(state.timer); state.timer = null; $('progressCard').hidden = true; $('progressTime').textContent = ''; }
   function abortPending() { state.controller?.abort(); state.controller = null; }
+  function showError(where, error) { where.querySelector('.error-box')?.remove(); const box = document.createElement('div'); box.className = 'error-box'; box.textContent = error?.message || String(error); where.prepend(box); }
 
   async function search(query) {
-    abortPending();
-    state.controller = new AbortController();
-    const results = $('searchResults');
-    results.hidden = false;
-    results.innerHTML = '<div class="empty">Ищу приложение в каталоге…</div>';
-    setStatus('off', 'provider: запрос…');
-    startProgress('Получаю индекс APKCombo через публичный CORS relay…');
+    abortPending(); state.controller = new AbortController();
+    const results = $('searchResults'); results.hidden = false; results.innerHTML = '<div class="empty">Авторизую анонимный Play-профиль и ищу в Google Play…</div>';
+    setStatus('off', 'Google Play: auth…'); startProgress('Получаю anonymous auth bundle и обращаюсь к Google Play FDFE…');
     try {
-      const rows = await P.search(query, { signal: state.controller.signal });
-      setStatus('on', 'provider: ready');
-      if (!rows.length) { results.innerHTML = '<div class="empty">Ничего не найдено. Попробуйте точный package ID или ссылку Google Play.</div>'; return; }
-      const exact = rows.find((row) => row.exact);
-      if (exact && P.extractPackage(query)) { await selectApp(exact); return; }
-      results.innerHTML = rows.map((row) => `
-        <button class="search-result" type="button" data-app-url="${escapeHtml(row.url)}" data-package="${escapeHtml(row.package)}" data-title="${escapeHtml(row.title)}">
-          <span><b>${escapeHtml(row.title)}</b><small>${escapeHtml(row.subtitle || row.package)}</small></span>
-          <code>${escapeHtml(row.package)}</code>
-        </button>`).join('');
+      const rows = await P.search(query, 'arm64', { signal: state.controller.signal }); setStatus('on', 'Google Play: ready');
+      if (!rows.length) { results.innerHTML = '<div class="empty">Google Play не вернул результатов. Попробуйте точный package ID.</div>'; return; }
+      if (P.extractPackage(query)) { await selectApp(rows[0]); return; }
+      results.innerHTML = rows.map((row) => `<button class="search-result" type="button" data-package="${escapeHtml(row.package)}" data-title="${escapeHtml(row.title)}"><span><b>${escapeHtml(row.title || row.package)}</b><small>${escapeHtml(row.developer || 'Google Play')}</small></span><code>${escapeHtml(row.package)}</code></button>`).join('');
     } finally { stopProgress(); }
   }
 
   async function selectApp(row) {
-    abortPending();
-    state.controller = new AbortController();
-    $('searchResults').hidden = true;
-    $('variantsCard').hidden = true;
-    $('appCard').hidden = true;
-    startProgress(`Открываю ${row.title || row.package} и историю версий…`);
+    abortPending(); state.controller = new AbortController(); $('searchResults').hidden = true; $('variantsCard').hidden = true; startProgress(`Получаю details для ${row.package} из Google Play…`);
     try {
-      const app = await P.getApp(row.url, { signal: state.controller.signal });
-      state.app = app;
-      renderApp(app);
-      $('appCard').hidden = false;
-      $('appCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setStatus('on', 'provider: ready');
+      const { app } = await P.details(row.package, 'arm64', { signal: state.controller.signal }); state.app = app;
+      $('appTitle').textContent = app.title || app.package; $('appPackage').textContent = app.package;
+      $('appMeta').textContent = [app.developer, app.version, app.versionCode && `versionCode ${app.versionCode}`].filter(Boolean).join(' · ');
+      $('openPlay').href = `https://play.google.com/store/apps/details?id=${encodeURIComponent(app.package)}`; $('appCard').hidden = false; $('appCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); setStatus('on', 'Google Play: ready');
     } finally { stopProgress(); }
   }
 
-  function renderApp(app) {
-    $('appTitle').textContent = app.title || app.package;
-    $('appPackage').textContent = app.package;
-    $('appMeta').textContent = [app.developer, app.version, `${app.oldVersions.length} старых версий`].filter(Boolean).join(' · ');
-    $('openProvider').href = app.url;
-    const versionSelect = $('versionSelect');
-    versionSelect.innerHTML = `<option value="${escapeHtml(app.downloadUrl)}">Последняя · ${escapeHtml(app.version || 'current')}</option>`;
-    app.oldVersions.forEach((version) => {
-      const option = document.createElement('option'); option.value = version.url; option.textContent = version.label; versionSelect.appendChild(option);
-    });
-  }
-
   function selectedArchitectures() { return [...document.querySelectorAll('input[name="arch"]:checked')].map((x) => x.value); }
+  function fileRows(result) { return [{ ...result.delivery.base, kind: 'BASE' }, ...result.delivery.splits.map((x) => ({ ...x, kind: 'SPLIT' })), ...result.delivery.additional.map((x, i) => ({ ...x, name: `${result.app.package}-${result.delivery.versionCode}-${x.kind || `extra${i}`}${x.kind?.includes('obb') ? '.obb' : '.apk'}`, kind: String(x.kind || 'EXTRA').toUpperCase() }))]; }
+  function formatBytes(n) { const num = Number(n || 0); if (!num) return '—'; const units = ['B', 'KiB', 'MiB', 'GiB']; let value = num, i = 0; while (value >= 1024 && i < units.length - 1) { value /= 1024; i += 1; } return `${value.toFixed(i ? 1 : 0)} ${units[i]}`; }
 
-  function filterVariants() {
-    const selected = selectedArchitectures();
-    const formats = [...document.querySelectorAll('input[name="format"]:checked')].map((x) => x.value);
-    const showUniversal = $('includeUniversal').checked;
-    state.visible = state.variants.filter((variant) => {
-      const tags = P.architectureTags(variant);
-      const archMatch = tags.includes('universal') ? showUniversal : tags.some((tag) => selected.includes(tag));
-      return archMatch && formats.includes(variant.format);
-    });
-    renderVariants();
-  }
-
-  function badges(variant) { const tags = P.architectureTags(variant); return [variant.format, ...tags, variant.android && `Android ${variant.android}`, variant.dpi].filter(Boolean); }
-
-  function renderVariants() {
+  function renderResolved() {
     const box = $('variants');
-    $('variantCount').textContent = `${state.visible.length} из ${state.variants.length}`;
-    if (!state.visible.length) { box.innerHTML = '<div class="empty">Для выбранных фильтров вариантов нет. Включите Universal/XAPK или другие ABI.</div>'; return; }
-    box.innerHTML = state.visible.map((variant) => `
-      <article class="variant" data-variant-id="${escapeHtml(variant.id)}">
-        <div class="variant-head">
-          <div>
-            <div class="variant-title"><h3>${escapeHtml(variant.format)}</h3>${badges(variant).map((b) => `<span class="pill">${escapeHtml(b)}</span>`).join('')}</div>
-            <p class="variant-meta">${escapeHtml(variant.label)}</p>
-          </div>
-          <div class="archive-actions">
-            <a class="button primary" href="${escapeHtml(variant.providerUrl)}" target="_blank" rel="noopener noreferrer">Скачать ${escapeHtml(variant.format)}</a>
-            <button class="button" type="button" data-action="apks" data-variant-id="${escapeHtml(variant.id)}">Сделать APKS</button>
-          </div>
-        </div>
-        <div class="variant-facts">
-          <span><b>ABI</b>${escapeHtml((variant.abis || []).join(', ') || 'universal / unspecified')}</span>
-          <span><b>Размер</b>${escapeHtml(variant.size || '—')}</span>
-          <span><b>Android</b>${escapeHtml(variant.android || '—')}</span>
-          <span><b>DPI</b>${escapeHtml(variant.dpi || '—')}</span>
-          <span><b>versionCode</b>${escapeHtml(variant.versionCode || '—')}</span>
-        </div>
-      </article>`).join('');
+    if (!state.resolved.length) { box.innerHTML = '<div class="empty">Google Play не отдал ни одного совместимого профиля.</div>'; return; }
+    box.innerHTML = state.resolved.map((result) => {
+      const files = fileRows(result);
+      return `<article class="variant" data-arch="${escapeHtml(result.arch)}"><div class="variant-head"><div><div class="variant-title"><h3>${escapeHtml(result.arch)}</h3><span class="pill">Google Play</span><span class="pill">vc ${escapeHtml(result.delivery.versionCode)}</span><span class="pill">${files.length} files</span></div><p class="variant-meta">${escapeHtml(result.app.version || '')} · base + ${result.delivery.splits.length} splits · ${result.delivery.additional.length} extras</p></div><div class="archive-actions"><button class="button" type="button" data-action="apks" data-arch="${escapeHtml(result.arch)}">Собрать APKS</button></div></div><div class="files">${files.map((file) => `<div class="file-row"><span class="file-kind">${escapeHtml(file.kind)}</span><span class="file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span><span class="file-size">${file.size ? escapeHtml(formatBytes(file.size)) : '—'}</span><a class="button" href="${escapeHtml(P.downloadRelayUrl(file))}" target="_blank" rel="noopener noreferrer">Скачать</a></div>`).join('')}</div></article>`;
+    }).join('');
   }
 
-  async function loadVariants() {
-    if (!state.app) return;
-    abortPending();
-    state.controller = new AbortController();
-    $('loadVariants').disabled = true;
-    $('variantsCard').hidden = true;
-    startProgress('Получаю список APK/XAPK вариантов: ABI, Android и DPI…');
+  async function resolveSelected() {
+    if (!state.app) return; const arches = selectedArchitectures(); if (!arches.length) return;
+    abortPending(); state.controller = new AbortController(); state.resolved = []; $('resolveButton').disabled = true; $('variantsCard').hidden = true; startProgress('Запрашиваю purchase → delivery непосредственно у Google Play…'); const failures = [];
     try {
-      const url = $('versionSelect').value;
-      state.variants = await P.getVariants(url, { signal: state.controller.signal, fresh: $('freshProvider').checked });
-      filterVariants();
-      $('variantsCard').hidden = false;
-      $('variantsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setStatus('on', `provider: ${state.variants.length} variants`);
-    } finally { $('loadVariants').disabled = false; stopProgress(); }
+      for (let i = 0; i < arches.length; i += 1) {
+        const arch = arches[i]; progress(`${arch}: anonymous auth → details → purchase → delivery (${i + 1}/${arches.length})`);
+        try { state.resolved.push(await P.resolve(state.app.package, arch, { signal: state.controller.signal, fresh: $('freshAuth').checked })); }
+        catch (error) { failures.push(`${arch}: ${error?.message || error}`); }
+      }
+      renderResolved(); $('variantsCard').hidden = false; $('diagnostics').textContent = failures.join('\n'); $('diagnosticsBlock').hidden = failures.length === 0; $('variantCount').textContent = String(state.resolved.length);
+      setStatus(state.resolved.length ? 'on' : 'error', state.resolved.length ? `Google Play: ${state.resolved.length} profiles` : 'Google Play: error'); $('variantsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } finally { $('resolveButton').disabled = false; stopProgress(); }
   }
 
-  async function makeApks(variantId, button) {
-    const variant = state.variants.find((item) => item.id === variantId);
-    if (!variant || !state.app) return;
-    button.disabled = true;
-    startProgress('Подготавливаю локальный APKS…');
+  async function makeApks(arch, button) {
+    const result = state.resolved.find((x) => x.arch === arch); if (!result) return; if (!window.JSZip) throw new Error('JSZip не загрузился'); button.disabled = true; startProgress(`${arch}: скачиваю APK-файлы с Google CDN в память браузера…`);
     try {
-      const result = await P.makeApks(variant, state.app, progress);
-      setStatus('on', `APKS: ${result.apkCount} APK`);
-    } finally { button.disabled = false; setTimeout(stopProgress, 600); }
+      const zip = new JSZip(); const apkFiles = fileRows(result).filter((x) => /\.apk$/i.test(x.name));
+      for (let i = 0; i < apkFiles.length; i += 1) { const file = apkFiles[i]; progress(`${arch}: ${i + 1}/${apkFiles.length} ${file.name}`); const response = await fetch(P.downloadRelayUrl(file), { cache: 'no-store' }); if (!response.ok) throw new Error(`${file.name}: HTTP ${response.status}`); zip.file(file.name, await response.arrayBuffer()); }
+      zip.file('meta.sai_v1.json', JSON.stringify({ label: `${result.app.title || result.app.package} ${result.app.version || ''}`, version_name: result.app.version || '', version_code: result.delivery.versionCode || result.app.versionCode || 0 }, null, 2));
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${result.app.package}-${result.delivery.versionCode}-${arch}.apks`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 15000);
+    } finally { button.disabled = false; stopProgress(); }
   }
 
   function wire() {
     setStatus('on', 'static: ready');
-    $('searchForm').addEventListener('submit', async (event) => {
-      event.preventDefault(); const query = $('query').value.trim(); if (query.length < 2) return;
-      try { await search(query); } catch (error) { stopProgress(); showError($('searchResults'), error); setStatus('error', 'provider: error'); }
-    });
-    $('searchResults').addEventListener('click', async (event) => {
-      const button = event.target.closest('[data-app-url]'); if (!button) return;
-      try { await selectApp({ url: button.dataset.appUrl, package: button.dataset.package, title: button.dataset.title }); }
-      catch (error) { stopProgress(); showError($('searchResults'), error); setStatus('error', 'provider: error'); }
-    });
-    $('loadVariants').addEventListener('click', async () => { try { await loadVariants(); } catch (error) { stopProgress(); showError($('appCard'), error); setStatus('error', 'provider: error'); } });
-    $('filters').addEventListener('change', filterVariants);
-    $('selectAllArch').addEventListener('click', () => { document.querySelectorAll('input[name="arch"]').forEach((x) => { x.checked = true; }); filterVariants(); });
-    $('onlyArm64').addEventListener('click', () => { document.querySelectorAll('input[name="arch"]').forEach((x) => { x.checked = x.value === 'arm64'; }); filterVariants(); });
-    $('variants').addEventListener('click', async (event) => {
-      const button = event.target.closest('[data-action="apks"]'); if (!button) return;
-      try { await makeApks(button.dataset.variantId, button); } catch (error) { stopProgress(); showError($('variantsCard'), error); setStatus('error', 'APKS: error'); }
-    });
-    $('resetApp').addEventListener('click', () => { abortPending(); state.app = null; state.variants = []; state.visible = []; $('appCard').hidden = true; $('variantsCard').hidden = true; $('query').focus(); });
-    const packageFromUrl = new URLSearchParams(location.search).get('package');
-    if (packageFromUrl) { $('query').value = packageFromUrl; search(packageFromUrl).catch((error) => { stopProgress(); showError($('searchResults'), error); }); }
+    $('searchForm').addEventListener('submit', async (event) => { event.preventDefault(); const query = $('query').value.trim(); if (query.length < 2) return; try { await search(query); } catch (error) { stopProgress(); showError($('searchResults'), error); setStatus('error', 'Google Play: error'); } });
+    $('searchResults').addEventListener('click', async (event) => { const b = event.target.closest('[data-package]'); if (!b) return; try { await selectApp({ package: b.dataset.package, title: b.dataset.title }); } catch (error) { stopProgress(); showError($('searchResults'), error); setStatus('error', 'Google Play: error'); } });
+    $('resolveButton').addEventListener('click', async () => { try { await resolveSelected(); } catch (error) { stopProgress(); showError($('appCard'), error); setStatus('error', 'Google Play: error'); } });
+    $('variants').addEventListener('click', async (event) => { const b = event.target.closest('[data-action="apks"]'); if (!b) return; try { await makeApks(b.dataset.arch, b); } catch (error) { stopProgress(); showError($('variantsCard'), error); } });
+    $('selectAllArch').addEventListener('click', () => { document.querySelectorAll('input[name="arch"]').forEach((x) => { x.checked = true; }); });
+    $('onlyArm64').addEventListener('click', () => { document.querySelectorAll('input[name="arch"]').forEach((x) => { x.checked = x.value === 'arm64'; }); });
+    $('resetApp').addEventListener('click', () => { abortPending(); state.app = null; state.resolved = []; $('appCard').hidden = true; $('variantsCard').hidden = true; $('query').focus(); });
+    const packageFromUrl = new URLSearchParams(location.search).get('package'); if (packageFromUrl) { $('query').value = packageFromUrl; search(packageFromUrl).catch((error) => { stopProgress(); showError($('searchResults'), error); setStatus('error', 'Google Play: error'); }); }
   }
 
   document.addEventListener('DOMContentLoaded', wire);

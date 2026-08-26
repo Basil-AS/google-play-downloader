@@ -1,0 +1,43 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const P = require('../assets/play-client.js');
+
+function vi(n) { const a = []; let x = BigInt(n); while (x > 0x7fn) { a.push(Number((x & 0x7fn) | 0x80n)); x >>= 7n; } a.push(Number(x)); return Buffer.from(a); }
+function fieldVarint(n, v) { return Buffer.concat([vi(n << 3), vi(v)]); }
+function fieldBytes(n, v) { const b = Buffer.isBuffer(v) ? v : Buffer.from(v); return Buffer.concat([vi((n << 3) | 2), vi(b.length), b]); }
+
+test('extractPackage handles package and Play URL', () => {
+  assert.equal(P.extractPackage('com.whatsapp'), 'com.whatsapp');
+  assert.equal(P.extractPackage('https://play.google.com/store/apps/details?id=org.mozilla.firefox'), 'org.mozilla.firefox');
+});
+
+test('profiles expose requested ABIs', () => {
+  assert.match(P.profileFor('arm64').Platforms, /arm64-v8a/);
+  assert.equal(P.profileFor('x86').Platforms, 'x86');
+  assert.match(P.profileFor('x86_64').Platforms, /x86_64/);
+  assert.match(P.profileFor('tv').Features, /android\.software\.leanback/);
+});
+
+test('ProtoDecoder reads varint and strings', () => {
+  const fields = new P.ProtoDecoder(Buffer.concat([fieldVarint(1, 1234), fieldBytes(2, 'hello')])).readAll();
+  assert.equal(fields[0][2], 1234);
+  assert.equal(Buffer.from(fields[1][2]).toString(), 'hello');
+});
+
+test('details parser follows FDFE field path', () => {
+  const appDetails = Buffer.concat([fieldVarint(3, 456789), fieldBytes(4, '1.2.3')]);
+  const doc = Buffer.concat([fieldBytes(1, 'com.example.app'), fieldBytes(5, 'Example'), fieldBytes(6, 'Developer'), fieldBytes(13, fieldBytes(1, appDetails))]);
+  const parsed = P.parseDetails(fieldBytes(1, fieldBytes(2, fieldBytes(4, doc))));
+  assert.equal(parsed.package, 'com.example.app'); assert.equal(parsed.versionCode, 456789); assert.equal(parsed.version, '1.2.3');
+});
+
+test('purchase parser extracts download token', () => {
+  assert.equal(P.parsePurchase(fieldBytes(1, fieldBytes(4, fieldBytes(55, 'download-token')))), 'download-token');
+});
+
+test('delivery parser extracts Google base and split URLs', () => {
+  const split = Buffer.concat([fieldBytes(1, 'config.arm64_v8a'), fieldVarint(2, 12), fieldBytes(5, 'https://play.googleapis.com/download/split.apk')]);
+  const data = Buffer.concat([fieldVarint(1, 100), fieldBytes(3, 'https://play.googleapis.com/download/base.apk'), fieldBytes(15, split), fieldVarint(29, 456789)]);
+  const parsed = P.parseDelivery(fieldBytes(1, fieldBytes(21, fieldBytes(2, data))));
+  assert.equal(parsed.base.url, 'https://play.googleapis.com/download/base.apk'); assert.equal(parsed.splits.length, 1); assert.equal(parsed.versionCode, 456789);
+});

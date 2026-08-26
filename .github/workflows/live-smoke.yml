@@ -1,0 +1,34 @@
+name: Live Google Play smoke
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: play-live-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  delivery:
+    name: Anonymous auth and FDFE delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      PLAY_SMOKE_PACKAGE: org.mozilla.firefox
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Live Google Play delivery
+        run: node tests/live-smoke.cjs
