@@ -1,91 +1,103 @@
 # Google Play APK Downloader
 
-A browser-only Google Play package downloader designed for GitHub Pages.
+A browser-only downloader for **Google Play itself**, designed to run from GitHub Pages.
 
-**No VPS. No backend. No Docker. No Google account. No browser extension.** Open the page, search for an app, choose a version/architecture and download the published APK/XAPK variant.
+**No VPS. No project backend. No Docker. No browser extension. No personal Google account.** Open the page, search Google Play, select one or more device/ABI profiles and request the files that Google Play delivers to those profiles.
 
 Live site: https://basil-as.github.io/google-play-downloader/
 
-## How it works
+## Architecture
 
 ```text
 GitHub Pages
     ↓
 Browser JavaScript
     ↓
-corsproxy.io (CORS relay for public HTML)
+Aurora anonymous auth dispenser
     ↓
-APKCombo public catalogue pages
+public CORS relay (transport only)
     ↓
-APKCombo signed package link / package CDN
+android.clients.google.com/fdfe
+    search / details / purchase / delivery
     ↓
-Your browser
+Google Play CDN
+    ↓
+base APK + split APK + OBB / asset files
 ```
 
-This intentionally follows the same practical model as the companion RuStore downloader: a static GitHub Pages application uses a public CORS relay for an upstream site that does not expose browser-friendly cross-origin responses.
+The APK source is Google Play. **APKCombo, APKPure, APKMirror and other APK mirrors/catalogues are not used.** The public relay only allows an ordinary browser origin to send the headers required by Google's Android FDFE API and, when necessary, forwards Google download cookies to the Google CDN.
 
-There is no application server owned by this project. The repository contains only static HTML/CSS/JavaScript, parser tests and GitHub Actions validation.
+The protocol implementation is based on the current open-source Aurora/goopdl Google Play flow: a short-lived anonymous auth bundle contains `authToken`, `gsfId`, device/check-in tokens and device metadata; the browser then performs `details → purchase → delivery` against Google FDFE and decodes the protobuf responses locally.
 
 ## Features
 
-- search by app name;
-- exact Android package ID, e.g. `org.videolan.vlc`;
-- Google Play URL input (`?id=...` is extracted automatically);
-- current package variants;
-- old versions exposed by APKCombo;
-- architecture filtering: `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`, universal / unspecified ABI;
-- APK, XAPK and APKS entries when the provider publishes them;
-- Android-version, DPI, size and versionCode metadata when present on the provider page;
-- direct provider download links;
-- optional client-side APKS export using JSZip; nothing is uploaded to a project server;
-- short `sessionStorage` caching and request timeouts;
-- light/dark mode from the operating-system preference.
+- search through Google Play FDFE;
+- exact package ID, e.g. `org.mozilla.firefox`;
+- Google Play URL input (`?id=` is extracted automatically);
+- direct `details`, `purchase` and `delivery` calls to Google;
+- ARM64, ARMv7, x86_64, x86 and Android TV profiles;
+- base APK and split APK enumeration from Google's delivery protobuf;
+- OBB / additional delivery files when Google exposes them;
+- Google-provided versionCode, sizes and hashes where available;
+- direct download of delivered files through the browser;
+- local SAI-compatible `.apks` packaging with JSZip;
+- 45-minute browser cache for anonymous Play auth to avoid repeatedly hitting the dispenser;
+- hard request timeouts so a broken external dependency cannot leave the UI spinning forever.
 
-## Important provider boundary
+## Anonymous authentication
 
-This project no longer talks to Google's private FDFE API and does not manage Google Play device/auth tokens. That is deliberate: doing that robustly from an ordinary GitHub Pages origin would require an external token/dispenser flow and would no longer satisfy the “open the page and it works” requirement.
+The page does not ask for your Google credentials. It requests a temporary anonymous Google Play auth bundle from Aurora's public dispenser at `https://auroraoss.com/api/auth` using an Android device profile. The bundle is cached locally in the browser for up to 45 minutes.
 
-Instead, the browser reads APKCombo's public catalogue/download pages. APKCombo describes its downloader as serving APK/XAPK packages sourced from Google Play and exposes architecture/Android/DPI variants. This project is not affiliated with Google or APKCombo and does not independently attest the origin/signature of each file; verify signatures/hashes yourself when provenance matters.
+The dispenser is an external public service and can rate-limit or become unavailable. If it cannot issue an anonymous account, direct Google Play delivery cannot start; the UI reports the error instead of silently hanging.
 
-Availability depends on GitHub Pages, `corsproxy.io`, APKCombo's current page structure/package availability, and the signed download URL generated by APKCombo. If APKCombo changes its HTML, update `assets/provider-apkcombo.js` and its fixture tests.
+## CORS relay
 
-## APKS export
+Google FDFE is not a browser-facing web API and does not provide the CORS policy needed by a GitHub Pages origin. Therefore requests are transported through a public CORS relay. The relay is **not the application source** and is not a project backend: the target remains `android.clients.google.com/fdfe`, and delivery URLs are accepted only when they belong to known Google domains.
 
-The **Make APKS** button is entirely browser-side. For a provider XAPK it extracts `.apk` members and creates a new ZIP with SAI metadata. This is **not** the same artifact as Google's original bundletool `.apks` file. The browser-generated archive does not invent missing splits and does not merge/re-sign APKs. OBB files present in XAPK are not converted into APKs.
+The current default relay is `corsproxy.io`, the same practical browser transport pattern used by the companion RuStore downloader. Availability therefore depends on the relay allowing the required request headers and binary responses.
 
-Very large packages can exceed practical browser memory. The UI refuses browser APKS conversion above roughly 900 MiB and leaves direct XAPK download available.
+## Limits
+
+- This is an unofficial implementation of Google's private Android FDFE protocol; Google can change it without notice.
+- Anonymous accounts can have regional, device, staged-rollout or acquisition restrictions.
+- Paid apps and apps unavailable to the anonymous account are not guaranteed to work.
+- Selecting several architectures performs separate device-profile deliveries because Google can return different split sets for each profile.
+- Google Play does not provide a complete public archive of every historic version. An old version can only be obtained while Google still delivers that version to a compatible profile/account.
+- Large browser-side `.apks` generation can consume substantial RAM; direct file download is preferable for very large packages.
 
 ## Development
 
-There is no backend setup. Serve the repository with any static server:
+There is no backend setup. Serve the repository as static files:
 
 ```bash
 python -m http.server 8000
 ```
 
-### Static tests
+### Tests
 
 ```bash
-node --check assets/provider-apkcombo.js
+node --check assets/play-client.js
 node --check assets/app.js
-node --test tests/provider.test.cjs
+node --test tests/play-client.test.cjs
 ```
+
+The unit tests construct synthetic protobuf messages and verify package parsing, architecture profiles, protobuf decoding, FDFE details fields, purchase tokens and delivery base/split extraction.
 
 ## CI / CD
 
-GitHub Actions verifies JavaScript syntax, APKCombo parser fixtures, required GitHub Pages files, absence of the old server/Docker architecture, and the expected external origins. GitHub Pages deployment uses native branch deployment from `master` / root.
+GitHub Actions validates JavaScript syntax, protobuf unit tests, the direct-Google origin contract, absence of mirror-provider code and absence of the old FastAPI/Docker architecture. GitHub Pages deploys the static `master` branch.
 
 ## Privacy
 
-The application has no project-side user database and no project backend. Requests still reach GitHub Pages, corsproxy.io, APKCombo and the package CDN, so their own privacy/logging policies apply.
+This project operates no application server and keeps no project-side user database. Temporary anonymous auth data is cached in the user's browser. Network requests are still visible to GitHub Pages, the Aurora dispenser, the selected CORS relay and Google, which apply their own logging/privacy policies.
 
 ## Contributors
 
 - **Basil-AS** — project owner, maintainer and product direction.
-- **OpenAI ChatGPT (GPT-5.6 Sol)** — AI-assisted architecture, implementation, parser tests, static deployment and documentation. See [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
+- **OpenAI ChatGPT (GPT-5.6 Sol)** — AI-assisted architecture, browser FDFE implementation, protobuf tests, CI/CD and documentation. See [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
 
 ## License / credits
 
 See [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) and [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
 
-Google Play is a trademark of Google LLC. APKCombo, corsproxy.io and JSZip are independent third-party services/projects. This repository is unofficial and unaffiliated with them.
+Google Play is a trademark of Google LLC. Aurora Store, corsproxy.io and JSZip are independent third-party projects/services. This repository is unofficial and unaffiliated with Google or those projects.
