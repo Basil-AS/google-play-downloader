@@ -6,7 +6,7 @@ It is not affiliated with Google LLC, Aurora Store or the relay provider.
 Runtime third-party services/libraries:
 - Google Play Android FDFE / Google CDN: https://android.clients.google.com/
 - Aurora anonymous authentication dispenser: https://auroraoss.com/api/auth
-- corsproxy.io public CORS relay: https://corsproxy.io/
+- corsproxy.cyou public binary CORS relay: https://corsproxy.cyou/
 - JSZip 3.10.1 loaded from jsDelivr: https://www.jsdelivr.com/package/npm/jszip
 
 APKCombo, APKPure, APKMirror and other APK mirrors/catalogues are not used by the application.
