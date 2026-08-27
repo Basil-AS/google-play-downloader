@@ -50,7 +50,8 @@ jobs:
           grep -q 'DIRECT GOOGLE PLAY FDFE' index.html
           grep -q 'android.clients.google.com/fdfe' assets/play-client.js
           grep -q 'https://auroraoss.com/api/auth' assets/play-client.js
-          grep -q 'https://corsproxy.io/' assets/play-client.js
+          grep -q 'https://api.corsproxy.cyou/' assets/runtime-guard.js
+          grep -q 'x-cors-header-' assets/runtime-guard.js
           grep -q 'cdn.jsdelivr.net/npm/jszip@3.10.1' index.html
           ! grep -R -E 'ApkComboProvider|provider-apkcombo|apkcombo\.com|apkpure\.com|apkmirror\.com' assets tests
 
