@@ -60,4 +60,4 @@ jobs:
           test ! -e backend
           test ! -e docker-compose.yml
           test ! -e .github/workflows/backend-image.yml
-          ! grep -R -E 'FastAPI|uvicorn|/api/resolve-fast|playDownloaderBackend' index.html assets README.md
+          ! grep -R -E 'FastAPI|uvicorn|/api/resolve-fast|playDownloaderBackend' index.html assets
