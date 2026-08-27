@@ -1,4 +1,31 @@
 const assert = require('node:assert/strict');
+
+const nativeFetch = global.fetch;
+const LEGACY_RELAY_ORIGIN = 'https://corsproxy.io';
+const FREE_BINARY_RELAY = 'https://api.corsproxy.cyou/';
+const forbidden = new Set(['cookie', 'user-agent', 'origin', 'referer', 'host']);
+
+global.fetch = async (input, init = {}) => {
+  const raw = input instanceof Request ? input.url : String(input);
+  let url;
+  try { url = new URL(raw); } catch { return nativeFetch(input, init); }
+  if (url.origin !== LEGACY_RELAY_ORIGIN) return nativeFetch(input, init);
+
+  const target = url.searchParams.get('url');
+  if (!target) return nativeFetch(input, init);
+  const headers = new Headers(init.headers || {});
+  for (const entry of url.searchParams.getAll('reqHeaders')) {
+    const i = entry.indexOf(':');
+    if (i < 1) continue;
+    const name = entry.slice(0, i).trim();
+    const value = entry.slice(i + 1).trim();
+    if (forbidden.has(name.toLowerCase())) headers.set(`x-cors-header-${name}`, value);
+    else headers.set(name, value);
+  }
+  headers.set('x-cors-header-Origin', 'https://android.clients.google.com');
+  return nativeFetch(`${FREE_BINARY_RELAY}${target}`, { ...init, headers });
+};
+
 const P = require('../assets/play-client.js');
 
 (async () => {
