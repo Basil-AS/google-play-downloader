@@ -15,7 +15,7 @@ Browser JavaScript
     ↓
 Aurora anonymous auth dispenser
     ↓
-public CORS relay (transport only)
+public binary CORS relay (transport only)
     ↓
 android.clients.google.com/fdfe
     search / details / purchase / delivery
@@ -54,7 +54,9 @@ The dispenser is an external public service and can rate-limit or become unavail
 
 Google FDFE is not a browser-facing web API and does not provide the CORS policy needed by a GitHub Pages origin. Therefore requests are transported through a public CORS relay. The relay is **not the application source** and is not a project backend: the target remains `android.clients.google.com/fdfe`, and delivery URLs are accepted only when they belong to known Google domains.
 
-The current default relay is `corsproxy.io`, the same practical browser transport pattern used by the companion RuStore downloader. Availability therefore depends on the relay allowing the required request headers and binary responses.
+The current runtime transport is `https://api.corsproxy.cyou/`. Its public implementation preserves the request method/body, streams binary responses, and supports server-side forwarding of browser-forbidden headers by translating `x-cors-header-*`. The client uses that mechanism for the Android-Finsky `User-Agent` and Google download `Cookie` when required. Anonymous use is rate-limited by the public relay.
+
+`corsproxy.io` is no longer used as the actual runtime transport because its free plan rejects Google FDFE's `application/x-protobuf` responses. `assets/play-client.js` still emits its older internal relay URL shape; `assets/runtime-guard.js` translates that shape to the current binary relay so the Play protocol code stays isolated from transport details.
 
 ## Limits
 
@@ -63,7 +65,9 @@ The current default relay is `corsproxy.io`, the same practical browser transpor
 - Paid apps and apps unavailable to the anonymous account are not guaranteed to work.
 - Selecting several architectures performs separate device-profile deliveries because Google can return different split sets for each profile.
 - Google Play does not provide a complete public archive of every historic version. An old version can only be obtained while Google still delivers that version to a compatible profile/account.
+- Cookie-protected single-file downloads are fetched through the relay into browser memory before saving; very large files can therefore consume substantial RAM.
 - Large browser-side `.apks` generation can consume substantial RAM; direct file download is preferable for very large packages.
+- The anonymous public relay is an external dependency and currently rate-limits unauthenticated clients.
 
 ## Development
 
@@ -76,6 +80,7 @@ python -m http.server 8000
 ### Tests
 
 ```bash
+node --check assets/runtime-guard.js
 node --check assets/play-client.js
 node --check assets/app.js
 node --test tests/play-client.test.cjs
@@ -100,4 +105,4 @@ This project operates no application server and keeps no project-side user datab
 
 See [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) and [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
 
-Google Play is a trademark of Google LLC. Aurora Store, corsproxy.io and JSZip are independent third-party projects/services. This repository is unofficial and unaffiliated with Google or those projects.
+Google Play is a trademark of Google LLC. Aurora Store, corsproxy.cyou and JSZip are independent third-party projects/services. This repository is unofficial and unaffiliated with Google or those projects.
