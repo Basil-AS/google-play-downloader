@@ -22,6 +22,7 @@ jobs:
       - name: Check required files
         run: |
           test -f index.html
+          test -f favicon.ico
           test -f api-patch.js
           test -f js/play-client.js
           test -f tests/play-client-runtime.cjs
@@ -30,6 +31,7 @@ jobs:
           test -f js/actions.js
           test -f js/main.js
           test -f worker/site-worker.js
+          test -f worker/google-auth.js
           test -f wrangler.jsonc
           test -f LICENSE
           test -f NOTICE
@@ -45,6 +47,7 @@ jobs:
           node --check js/actions.js
           node --check js/main.js
           node --check worker/site-worker.js
+          node --check worker/google-auth.js
           node --check scripts/build.mjs
       - name: Unit tests
         run: node --test tests/play-client.test.cjs tests/worker.test.mjs
@@ -52,14 +55,18 @@ jobs:
         run: |
           grep -q 'google-play-downloader.basil-as.workers.dev' api-patch.js
           grep -q '/api/fdfe' api-patch.js
-          grep -q '/api/aurora-auth' worker/site-worker.js
+          grep -q '/api/auth' api-patch.js
+          grep -q '/api/health' worker/site-worker.js
+          grep -q 'GOOGLE_AAS_TOKEN' worker/google-auth.js
           grep -q 'play.googleapis.com' worker/site-worker.js
+          ! grep -q 'const AURORA_AUTH' worker/site-worker.js
           ! grep -R -nE 'APKCombo|APKPure|APKMirror' index.html js api-patch.js worker || exit 1
       - name: Build static assets
         run: node scripts/build.mjs
       - name: Verify build output
         run: |
           test -f dist/index.html
+          test -f dist/favicon.ico
           test -f dist/api-patch.js
           test -f dist/js/play-client.js
           test -f dist/js/main.js
