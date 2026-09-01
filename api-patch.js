@@ -1,10 +1,15 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260901-1";
+  const VERSION = "20260901-2";
   const WORKER_ORIGIN = "https://google-play-downloader.basil-as.workers.dev";
   const nativeFetch = window.fetch.bind(window);
-  let profileOptions = { locale: "ru-RU", density: "" };
+  const COUNTRY_MCC = Object.freeze({
+    US: ["310", "38"], IN: ["404", "20"], GB: ["234", "30"],
+    DE: ["262", "01"], RU: ["250", "01"]
+  });
+
+  let profileOptions = { locale: "ru-RU", density: "", country: "" };
 
   function hostname() {
     return String(location?.hostname || "");
@@ -56,7 +61,12 @@
         const fallback = primary.toLowerCase().startsWith("ru") ? "en-US" : "ru-RU";
         profile.Locales = `${primary},${fallback}`;
       }
-      if (profileOptions.density) profile["Screen.Density"] = String(profileOptions.density);
+      if (profileOptions.density) profile["Screen.Density"] = profileOptions.density;
+      const operator = COUNTRY_MCC[profileOptions.country];
+      if (operator) {
+        profile.CellOperator = operator[0];
+        profile.SimOperator = operator[1];
+      }
       return JSON.stringify(profile);
     } catch {
       return body;
@@ -76,6 +86,13 @@
 
   function isFdfe(url) {
     return url.hostname === "android.clients.google.com" && url.pathname.startsWith("/fdfe/");
+  }
+
+  function applyCountry(url) {
+    if (profileOptions.country && isFdfe(url) && !url.searchParams.has("gl")) {
+      url.searchParams.set("gl", profileOptions.country);
+    }
+    return url;
   }
 
   function isGoogleDownload(url) {
@@ -132,6 +149,7 @@
     }
 
     if (isFdfe(target)) {
+      applyCountry(target);
       const suffix = `${target.pathname.slice("/fdfe".length)}${target.search}`;
       return workerFetch(`/api/fdfe${suffix}`, { ...init, headers });
     }
@@ -179,10 +197,12 @@
   function setProfileOptions(next = {}) {
     const normalized = {
       locale: String(next.locale || "ru-RU"),
-      density: next.density ? String(next.density) : ""
+      density: next.density ? String(next.density) : "",
+      country: String(next.country || "").trim().toUpperCase()
     };
     const changed = normalized.locale !== profileOptions.locale ||
-      normalized.density !== profileOptions.density;
+      normalized.density !== profileOptions.density ||
+      normalized.country !== profileOptions.country;
     profileOptions = normalized;
     if (changed) clearAuthCache();
     return changed;
