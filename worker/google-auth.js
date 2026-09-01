@@ -108,6 +108,18 @@ function readVarint(data, start) {
   throw new Error("Invalid varint");
 }
 
+function readFixed64LE(data, start) {
+  if (start + 8 > data.length) throw new Error("EOF fixed64");
+  let value = 0n;
+  for (let i = 0; i < 8; i += 1) value |= BigInt(data[start + i]) << BigInt(i * 8);
+  return value;
+}
+
+function readFixed32LE(data, start) {
+  if (start + 4 > data.length) throw new Error("EOF fixed32");
+  return (data[start] | (data[start + 1] << 8) | (data[start + 2] << 16) | (data[start + 3] << 24)) >>> 0;
+}
+
 function readFields(input) {
   const data = input instanceof Uint8Array ? input : new Uint8Array(input || []);
   const fields = [];
@@ -118,13 +130,13 @@ function readFields(input) {
     if (wire === 0) {
       const [value, next] = readVarint(data, pos); pos = next; fields.push([field, wire, value]);
     } else if (wire === 1) {
-      if (pos + 8 > data.length) throw new Error("EOF fixed64"); fields.push([field, wire, data.slice(pos, pos + 8)]); pos += 8;
+      const value = readFixed64LE(data, pos); fields.push([field, wire, value]); pos += 8;
     } else if (wire === 2) {
       const [lengthRaw, afterLength] = readVarint(data, pos); pos = afterLength; const length = Number(lengthRaw);
       if (!Number.isSafeInteger(length) || pos + length > data.length) throw new Error("EOF bytes");
       fields.push([field, wire, data.slice(pos, pos + length)]); pos += length;
     } else if (wire === 5) {
-      if (pos + 4 > data.length) throw new Error("EOF fixed32"); fields.push([field, wire, data.slice(pos, pos + 4)]); pos += 4;
+      const value = readFixed32LE(data, pos); fields.push([field, wire, value]); pos += 4;
     } else throw new Error(`Unsupported protobuf wire type ${wire}`);
   }
   return fields;
@@ -195,10 +207,10 @@ async function directGoogleAuth(profile, country, env) {
   });
   if (!checkin.ok) throw new Error(`Google checkin HTTP ${checkin.status}`);
   const checkinBytes = new Uint8Array(await checkin.arrayBuffer());
-  const androidIdRaw = firstField(checkinBytes, 7, 0);
+  const androidIdRaw = firstField(checkinBytes, 7);
   const consistencyToken = responseString(checkinBytes, 12);
-  if (typeof androidIdRaw !== "bigint") throw new Error("Google checkin did not return androidId");
-  const gsfId = androidIdRaw.toString(16);
+  if (typeof androidIdRaw !== "bigint" && typeof androidIdRaw !== "number") throw new Error("Google checkin did not return androidId");
+  const gsfId = BigInt(androidIdRaw).toString(16);
 
   const partial = {
     authToken: "",
