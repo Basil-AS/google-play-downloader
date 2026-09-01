@@ -14,12 +14,12 @@ GitHub Pages
 browser UI
     ↓
 google-play-downloader.basil-as.workers.dev
-    ├─ /api/aurora-auth → Aurora anonymous dispenser
-    ├─ /api/fdfe/*      → android.clients.google.com/fdfe
-    └─ /api/download    → Google delivery CDN
+    ├─ /api/auth       → self-hosted Google auth или свой dispenser
+    ├─ /api/fdfe/*     → android.clients.google.com/fdfe
+    └─ /api/download   → Google delivery CDN
 ```
 
-Cloudflare Worker не является APK-зеркалом: файлы не сохраняются на проекте. Он нужен как server-side transport к приватному Android FDFE API и для передачи временных download cookies, которые обычный GitHub Pages JavaScript не может надёжно отправлять напрямую.
+Cloudflare Worker не является APK-зеркалом: файлы не сохраняются на проекте. Он выполняет server-side auth/transport к Android FDFE и передаёт временные download cookies, которые обычный GitHub Pages JavaScript не может надёжно отправлять напрямую.
 
 ## Возможности
 
@@ -33,12 +33,12 @@ Cloudflare Worker не является APK-зеркалом: файлы не с
 - package prefix с точкой на конце (`com.google.`) жёстко фильтрует package ID из результатов Google Play search;
 - ARM64, ARMv7, x86_64, x86 и Android TV;
 - country/region, locale и density override;
-- anonymous auth через Aurora dispenser и 45-минутный browser auth cache;
-- retry со свежим token при типичной auth/token ошибке;
+- self-hosted auth через Cloudflare Worker;
 - `details → purchase → delivery`;
 - base APK, split APK, OBB и дополнительные delivery-файлы;
 - скачивание файлов отдельно и локальная сборка SAI-compatible `.apks`;
-- HTTP Range для больших Google CDN downloads через Worker.
+- HTTP Range для больших Google CDN downloads через Worker;
+- `/api/health` показывает, настроена ли серверная авторизация.
 
 > В отличие от RuStore, приватный Play search не предоставляет надёжный публичный способ перечислить **все** приложения по package-prefix. Поэтому prefix-режим здесь строгий по `startsWith`, но ограничен кандидатами, которые вернула поисковая выдача Google Play.
 
@@ -62,9 +62,25 @@ Root directory: /
 https://google-play-downloader.basil-as.workers.dev
 ```
 
-Он уже прописан backend-адресом для GitHub Pages в `api-patch.js`. Если выберешь другое имя Worker/subdomain, измени `WORKER_ORIGIN`.
+Он уже прописан backend-адресом для GitHub Pages в `api-patch.js`.
 
-`wrangler.jsonc` разворачивает одновременно `dist/` как Static Assets и `worker/site-worker.js` как API backend. После deploy работают и GitHub Pages, и Worker URL.
+### Авторизация Google Play
+
+Публичный `auroraoss.com` больше не используется проектом как backend по умолчанию. Настрой один из вариантов:
+
+**Direct Google auth (рекомендуется для self-hosted инстанса):** в Cloudflare Worker добавь encrypted secrets `GOOGLE_ACCOUNT_EMAIL` и `GOOGLE_AAS_TOKEN`. Используй отдельный технический/одноразовый Google account. AAS token должен начинаться с `aas_et/`. Секреты остаются в Worker и не передаются фронтенду.
+
+**Свой dispenser:** задай Worker variable `PLAY_DISPENSER_URL` со своим HTTPS Aurora-compatible endpoint.
+
+Подробности: [`AUTH_SETUP.md`](AUTH_SETUP.md).
+
+Проверка после deploy:
+
+```text
+https://google-play-downloader.basil-as.workers.dev/api/health
+```
+
+Должно вернуть `authMode: "direct-google"` либо `authMode: "custom-dispenser"`. `unconfigured` означает, что Worker работает, но поиск ещё не может получить Play auth token.
 
 ## Безопасность Worker
 
@@ -72,11 +88,11 @@ Worker не является универсальным proxy. FDFE разреш
 
 ## Протокольный слой и параллельная поддержка с RuStore
 
-`js/play-client.js` сохраняет существующую Google Play FDFE/protobuf реализацию: device profiles, Aurora auth bundle, FDFE headers, protobuf decoder, details, purchase и delivery parsers.
+`js/play-client.js` сохраняет Google Play FDFE/protobuf реализацию: device profiles, auth bundle, FDFE headers, protobuf decoder, details, purchase и delivery parsers.
 
-`api-patch.js` — transport adapter. Он переводит старый relay contract протокольного слоя на собственный constrained Cloudflare Worker. Благодаря этому store-specific FDFE/parser можно обновлять независимо от общего frontend/Worker-кода.
+`api-patch.js` — transport adapter. Store-specific FDFE/parser обновляется независимо от общего frontend/Worker-кода.
 
-Общие слои с `rustore-downloader` теперь одинаковые по назначению:
+Общие слои с `rustore-downloader` одинаковые по назначению:
 
 ```text
 index.html
@@ -96,8 +112,8 @@ App Bundle обычно доставляется набором подписан
 ## Ограничения
 
 - Google Play FDFE — приватный reverse-engineered Android API и может измениться без уведомления.
-- Aurora anonymous dispenser может быть недоступен или rate-limit'ить.
-- Anonymous accounts могут видеть другой регион/staged rollout и не иметь права на конкретный продукт.
+- Direct Google auth требует отдельного аккаунта/AAS token или собственного dispenser.
+- Аккаунты могут видеть другой регион/staged rollout и не иметь права на конкретный продукт.
 - Paid apps не гарантируются.
 - Package-prefix поиск не является полным перечислением каталога.
 - Большой `.apks` собирается в памяти браузера; для крупных приложений лучше скачивать файлы отдельно.
@@ -110,10 +126,10 @@ npm run build
 npm test
 ```
 
-Live external smoke оставлен только ручным, чтобы downtime Aurora/Google не делал обычный CI красным.
+Live external smoke оставлен ручным, чтобы downtime Google не делал обычный CI красным.
 
-Проект не использует APKCombo, APKPure, APKMirror и другие APK-зеркала. Google Play flow ориентирован на open-source практики Aurora Store / Aurora GPlayApi и `goopdl`: anonymous authentication, device profiles, purchase/delivery, base/split APK, OBB и дополнительные delivery assets.
+Проект не использует APKCombo, APKPure, APKMirror и другие APK-зеркала.
 
-См. [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) и [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
+См. [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), [`AUTH_SETUP.md`](AUTH_SETUP.md) и [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
 
-Google Play является товарным знаком Google LLC. Aurora Store/Aurora Dispenser — независимые проекты. Репозиторий не связан и не аффилирован с Google или Aurora OSS.
+Google Play является товарным знаком Google LLC. Репозиторий не связан и не аффилирован с Google или Aurora OSS.
