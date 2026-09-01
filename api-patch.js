@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260901-2";
+  const VERSION = "20260901-3";
   const WORKER_ORIGIN = "https://google-play-downloader.basil-as.workers.dev";
   const nativeFetch = window.fetch.bind(window);
   const COUNTRY_MCC = Object.freeze({
@@ -11,10 +11,7 @@
 
   let profileOptions = { locale: "ru-RU", density: "", country: "" };
 
-  function hostname() {
-    return String(location?.hostname || "");
-  }
-
+  function hostname() { return String(location?.hostname || ""); }
   function mode() {
     const host = hostname();
     if (host.endsWith(".workers.dev")) return "cloudflare-workers";
@@ -22,14 +19,8 @@
     if (host === "localhost" || host === "127.0.0.1") return "local-via-cloudflare";
     return "external-cloudflare";
   }
-
-  function apiOrigin() {
-    return hostname().endsWith(".workers.dev") ? location.origin : WORKER_ORIGIN;
-  }
-
-  function apiUrl(path) {
-    return `${apiOrigin()}${path}`;
-  }
+  function apiOrigin() { return hostname().endsWith(".workers.dev") ? location.origin : WORKER_ORIGIN; }
+  function apiUrl(path) { return `${apiOrigin()}${path}`; }
 
   function utf8ToB64(value) {
     const bytes = new TextEncoder().encode(String(value));
@@ -37,11 +28,7 @@
     bytes.forEach(byte => { binary += String.fromCharCode(byte); });
     return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
   }
-
-  function encodeHeaders(headers) {
-    return utf8ToB64(JSON.stringify(headers || {}));
-  }
-
+  function encodeHeaders(headers) { return utf8ToB64(JSON.stringify(headers || {})); }
   function parseForwardedHeaders(url) {
     const headers = {};
     for (const item of url.searchParams.getAll("reqHeaders")) {
@@ -79,39 +66,30 @@
     if (!raw) return null;
     try { return new URL(raw); } catch { return null; }
   }
-
-  function isAurora(url) {
-    return url.hostname === "auroraoss.com" && url.pathname === "/api/auth";
-  }
-
-  function isFdfe(url) {
-    return url.hostname === "android.clients.google.com" && url.pathname.startsWith("/fdfe/");
-  }
-
+  function isLegacyAuth(url) { return url.hostname === "auroraoss.com" && url.pathname === "/api/auth"; }
+  function isFdfe(url) { return url.hostname === "android.clients.google.com" && url.pathname.startsWith("/fdfe/"); }
   function applyCountry(url) {
-    if (profileOptions.country && isFdfe(url) && !url.searchParams.has("gl")) {
-      url.searchParams.set("gl", profileOptions.country);
-    }
+    if (profileOptions.country && isFdfe(url) && !url.searchParams.has("gl")) url.searchParams.set("gl", profileOptions.country);
     return url;
   }
-
   function isGoogleDownload(url) {
     const host = url.hostname.toLowerCase();
     return url.protocol === "https:" && (
-      host === "play.googleapis.com" ||
-      host === "android.clients.google.com" ||
-      host.endsWith(".googleusercontent.com") ||
-      host.endsWith(".ggpht.com") ||
-      host.endsWith(".googleapis.com")
+      host === "play.googleapis.com" || host === "android.clients.google.com" ||
+      host.endsWith(".googleusercontent.com") || host.endsWith(".ggpht.com") || host.endsWith(".googleapis.com")
     );
   }
 
   function workerFetch(path, init = {}) {
-    return nativeFetch(apiUrl(path), {
-      ...init,
-      cache: "no-store",
-      referrerPolicy: "no-referrer"
-    });
+    const headers = new Headers(init.headers || {});
+    if (profileOptions.country) headers.set("X-Play-Country", profileOptions.country);
+    return nativeFetch(apiUrl(path), { ...init, headers, cache: "no-store", referrerPolicy: "no-referrer" });
+  }
+
+  async function authFetch(body, init = {}) {
+    const headers = new Headers(init.headers || {});
+    headers.set("Content-Type", "application/json");
+    return workerFetch("/api/auth", { ...init, method: "POST", headers, body: mergeProfile(body) });
   }
 
   async function patchedFetch(input, init = {}) {
@@ -121,91 +99,66 @@
     })();
     if (!sourceUrl) return nativeFetch(input, init);
 
-    if (isAurora(sourceUrl)) {
-      const headers = new Headers(init.headers || {});
-      headers.set("Content-Type", "application/json");
-      return workerFetch("/api/aurora-auth", {
-        ...init,
-        method: init.method || "POST",
-        headers,
-        body: mergeProfile(init.body)
-      });
-    }
+    if (isLegacyAuth(sourceUrl)) return authFetch(init.body, init);
 
     const target = relayTarget(sourceUrl);
     if (!target) return nativeFetch(input, init);
-
     const forwarded = parseForwardedHeaders(sourceUrl);
     const headers = new Headers(init.headers || {});
     headers.set("X-Play-Headers", encodeHeaders(forwarded));
 
-    if (isAurora(target)) {
-      headers.set("Content-Type", "application/json");
-      return workerFetch("/api/aurora-auth", {
-        ...init,
-        headers,
-        body: mergeProfile(init.body)
-      });
-    }
-
+    if (isLegacyAuth(target)) return authFetch(init.body, { ...init, headers });
     if (isFdfe(target)) {
       applyCountry(target);
       const suffix = `${target.pathname.slice("/fdfe".length)}${target.search}`;
       return workerFetch(`/api/fdfe${suffix}`, { ...init, headers });
     }
-
     if (isGoogleDownload(target)) {
-      const params = new URLSearchParams({
-        url: target.href,
-        h: encodeHeaders(forwarded)
-      });
+      const params = new URLSearchParams({ url: target.href, h: encodeHeaders(forwarded) });
       return workerFetch(`/api/download?${params}`, { method: "GET", headers: {} });
     }
-
     throw new Error(`Blocked legacy relay target: ${target.hostname}`);
   }
 
   function downloadHeaders(file) {
     const headers = {};
     if (Array.isArray(file?.cookies) && file.cookies.length) {
-      headers.Cookie = file.cookies
-        .filter(item => item?.name)
-        .map(item => `${item.name}=${item.value || ""}`)
-        .join("; ");
+      headers.Cookie = file.cookies.filter(item => item?.name).map(item => `${item.name}=${item.value || ""}`).join("; ");
     }
     return headers;
   }
-
   function downloadUrl(file, name = "") {
     if (!file?.url) return "#";
-    const params = new URLSearchParams({
-      url: file.url,
-      h: encodeHeaders(downloadHeaders(file))
-    });
+    const params = new URLSearchParams({ url: file.url, h: encodeHeaders(downloadHeaders(file)) });
     if (name) params.set("name", name);
     return apiUrl(`/api/download?${params}`);
   }
 
   function clearAuthCache() {
     try {
-      Object.keys(localStorage)
-        .filter(key => key.startsWith("gpd:play-auth:v1:"))
-        .forEach(key => localStorage.removeItem(key));
+      Object.keys(localStorage).filter(key => key.startsWith("gpd:play-auth:v1:")).forEach(key => localStorage.removeItem(key));
     } catch {}
   }
-
   function setProfileOptions(next = {}) {
     const normalized = {
       locale: String(next.locale || "ru-RU"),
       density: next.density ? String(next.density) : "",
       country: String(next.country || "").trim().toUpperCase()
     };
-    const changed = normalized.locale !== profileOptions.locale ||
-      normalized.density !== profileOptions.density ||
-      normalized.country !== profileOptions.country;
+    const changed = normalized.locale !== profileOptions.locale || normalized.density !== profileOptions.density || normalized.country !== profileOptions.country;
     profileOptions = normalized;
     if (changed) clearAuthCache();
     return changed;
+  }
+
+  async function health() {
+    try {
+      const response = await nativeFetch(apiUrl("/api/health"), { cache: "no-store", referrerPolicy: "no-referrer" });
+      if (!response.ok) return { ok: false, status: response.status, authMode: "unknown" };
+      return await response.json();
+    } catch (error) {
+      return { ok: false, authMode: "unreachable", error: error?.message || String(error) };
+    }
   }
 
   window.fetch = patchedFetch;
@@ -215,6 +168,8 @@
     getMode: mode,
     getApiOrigin: apiOrigin,
     isConfigured: () => Boolean(apiOrigin()),
+    authUrl: () => apiUrl("/api/auth"),
+    health,
     downloadUrl,
     setProfileOptions,
     clearAuthCache,
