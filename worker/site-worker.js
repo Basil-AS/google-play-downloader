@@ -30,7 +30,10 @@ const ALLOWED_FORWARD_HEADERS = new Set([
 function corsHeaders(request) {
   const origin = request.headers.get("Origin") || "";
   if (!origin) return {};
-  if (!ALLOWED_CORS_ORIGINS.has(origin)) return null;
+  let requestOrigin = "";
+  try { requestOrigin = new URL(request.url).origin; } catch {}
+  const sameOrigin = origin === requestOrigin;
+  if (!sameOrigin && !ALLOWED_CORS_ORIGINS.has(origin)) return null;
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
