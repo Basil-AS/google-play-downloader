@@ -13,6 +13,7 @@ const ALLOWED_CORS_ORIGINS = new Set([
 
 const ALLOWED_FDFE_PATHS = [
   /^\/fdfe\/search$/,
+  /^\/fdfe\/searchList$/,
   /^\/fdfe\/details$/,
   /^\/fdfe\/purchase$/,
   /^\/fdfe\/delivery$/
@@ -117,6 +118,19 @@ function countryFrom(request) {
   return String(request.headers.get("X-Play-Country") || "").trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
 }
 
+function extractSearchListPath(bytes) {
+  try {
+    const text = decoder.decode(bytes);
+    const match = text.match(/searchList\?[A-Za-z0-9%&_=+.,~\-]+/);
+    if (!match) return "";
+    const url = new URL(`/fdfe/${match[0]}`, GOOGLE_ORIGIN);
+    if (url.pathname !== "/fdfe/searchList") return "";
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "";
+  }
+}
+
 async function proxyCustomDispenser(request, cors, env) {
   let target;
   try { target = new URL(String(env.PLAY_DISPENSER_URL || "")); }
@@ -174,6 +188,25 @@ async function handleFdfe(request, url, cors) {
       upstream = await fetch(target.toString(), { method: request.method, headers, body, redirect: "follow" });
       if (upstream.status !== 429 || attempt === maxAttempts - 1) break;
       await sleep(retryDelayMs(upstream.headers, DELIVERY_BACKOFF_MS[attempt] || 3000));
+    }
+
+    // Modern Play search is two-stage: /search returns a protobuf container with
+    // an authenticated searchList?... continuation. Follow that exact continuation
+    // server-side so the browser receives the actual app-doc list it already parses.
+    if (suffix === "/fdfe/search" && request.method === "GET" && upstream.ok) {
+      const firstBytes = new Uint8Array(await upstream.arrayBuffer());
+      const searchListPath = extractSearchListPath(firstBytes);
+      if (searchListPath) {
+        upstream = await fetch(new URL(searchListPath, GOOGLE_ORIGIN).toString(), {
+          method: "GET",
+          headers,
+          redirect: "follow"
+        });
+      } else {
+        const responseHeaders = new Headers({ "Content-Type": upstream.headers.get("Content-Type") || "application/x-protobuf", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+        applyHeaders(responseHeaders, cors);
+        return new Response(firstBytes, { status: upstream.status, statusText: upstream.statusText, headers: responseHeaders });
+      }
     }
   } catch {
     return jsonError("Google Play FDFE unavailable", 502, cors);
