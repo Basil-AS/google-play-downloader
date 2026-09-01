@@ -1,6 +1,6 @@
 # Google Play APK Downloader
 
-Неофициальный open-source веб-инструмент для поиска приложений в **Google Play** и получения тех файлов, которые Google Play delivery отдаёт выбранному Android device profile: `base.apk`, split APK, OBB/дополнительные файлы и локально собранный `.apks`.
+Неофициальный open-source веб-инструмент для поиска приложений в **Google Play** и получения корректного результата для выбранного Android device profile: одного оригинального APK при монолитной delivery либо локально собранного `.apks` из оригинальных split APK. OBB и другие не-APK extras отображаются отдельно.
 
 **Основной frontend:** https://basil-as.github.io/google-play-downloader/
 
@@ -31,14 +31,18 @@ Cloudflare Worker не является APK-зеркалом: файлы не с
 - максимум 8 релевантных карточек в обычной выдаче;
 - полный package name и Google Play URL ищутся точно;
 - package prefix с точкой на конце (`com.google.`) жёстко фильтрует package ID из результатов Google Play search;
-- ARM64, ARMv7, x86_64, x86 и Android TV;
-- country/region, locale и density override;
+- ARM64 (`arm64-v8a`, включая ARMv8/ARMv9 устройства), ARMv7, x86_64, x86 и Android TV;
+- country/region, locale и расширенный density override;
+- inline `?`-справка по ABI, региону, locale, density, auth cache и формату выдачи;
 - self-hosted auth через Cloudflare Worker;
 - `details → purchase → delivery`;
-- base APK, split APK, OBB и дополнительные delivery-файлы;
-- скачивание файлов отдельно и локальная сборка SAI-compatible `.apks`;
+- автоматический формат выдачи: монолитная delivery → один APK, split delivery → один SAI-compatible `.apks`;
+- состав base/split APK показывается справочно без вводящих в заблуждение отдельных кнопок скачивания;
+- OBB и другие не-APK extras доступны отдельно, если Google Play их выдал;
 - HTTP Range для больших Google CDN downloads через Worker;
 - `/api/health` показывает, настроена ли серверная авторизация.
+
+> В Android нет отдельного ABI `armv9`. Поддерживаемый NDK ABI для 64-bit ARM называется `arm64-v8a`; ARMv9-устройства продолжают использовать его. ARMv9-функции вроде PAC/BTI могут применяться внутри того же `arm64-v8a` build.
 
 > В отличие от RuStore, приватный Play search не предоставляет надёжный публичный способ перечислить **все** приложения по package-prefix. Поэтому prefix-режим здесь строгий по `startsWith`, но ограничен кандидатами, которые вернула поисковая выдача Google Play.
 
@@ -107,7 +111,11 @@ CI
 
 ## Почему не universal APK
 
-App Bundle обычно доставляется набором подписанных APK (`base.apk`, ABI/density/language splits). Пересборка их в один APK потребовала бы новой подписи. Проект сохраняет оригинальные артефакты и предлагает `.apks`.
+App Bundle обычно доставляется набором подписанных APK (`base.apk`, ABI/density/language/feature splits). Склеивание их в новый «universal APK» потребовало бы пересборки и новой подписи. Поэтому проект сохраняет оригинальные артефакты: если Google дал один APK — скачивается он; если Google дал набор splits — браузер упаковывает исходные APK в `.apks` без переподписи.
+
+## Density
+
+`Density` — логическая плотность экрана в dpi, а не физическое разрешение. Google Play использует её для выбора density config split. По умолчанию device profile использует 420 dpi. В UI доступны стандартные buckets (`120/160/213/240/320/480/640`) и распространённые промежуточные значения (`360/400/420/440/560`). Если известна density конкретного устройства, лучше указывать её точно.
 
 ## Ограничения
 
@@ -116,7 +124,7 @@ App Bundle обычно доставляется набором подписан
 - Аккаунты могут видеть другой регион/staged rollout и не иметь права на конкретный продукт.
 - Paid apps не гарантируются.
 - Package-prefix поиск не является полным перечислением каталога.
-- Большой `.apks` собирается в памяти браузера; для крупных приложений лучше скачивать файлы отдельно.
+- Большой `.apks` собирается в памяти браузера; очень крупная split-delivery может потребовать много RAM. Монолитный APK скачивается потоково через Worker.
 
 ## Разработка
 
