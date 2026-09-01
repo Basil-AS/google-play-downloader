@@ -28,6 +28,23 @@ test("Worker forwards only allowed FDFE request", async () => {
   } finally { globalThis.fetch=oldFetch; }
 });
 
+test("Worker follows searchList continuation returned by modern Google Play search", async () => {
+  const calls=[]; const oldFetch=globalThis.fetch;
+  const continuation="searchList?q=firefox&o=0&c=3&ksm=1&sb=5&ctntkn=abc_DEF-123";
+  globalThis.fetch=async(url,init={})=>{
+    const u=String(url); calls.push({url:u,init});
+    if(u.includes("/fdfe/search?")) return new Response(fieldBytes(1,fieldBytes(10,continuation)),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
+    if(u.includes("/fdfe/searchList?")) return new Response(new Uint8Array([9,8,7]),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
+    throw new Error(`Unexpected URL ${u}`);
+  };
+  try {
+    const req=new Request("https://worker/api/fdfe/search?q=firefox&c=3",{headers:{Origin:"https://basil-as.github.io","X-Play-Headers":b64({Authorization:"Bearer x"})}});
+    const res=await worker.fetch(req,{ASSETS:assets});
+    assert.equal(res.status,200); assert.equal(calls.length,2); assert.match(calls[1].url,/\/fdfe\/searchList\?/); assert.match(calls[1].url,/ctntkn=abc_DEF-123/);
+    assert.deepEqual([...new Uint8Array(await res.arrayBuffer())],[9,8,7]);
+  } finally {globalThis.fetch=oldFetch;}
+});
+
 test("Worker reports auth backend state and does not use AuroraOSS implicitly", async () => {
   const oldFetch=globalThis.fetch; let calls=0; globalThis.fetch=async()=>{calls+=1;return new Response("unexpected")};
   try {
