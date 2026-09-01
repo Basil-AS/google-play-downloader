@@ -5,7 +5,7 @@ export const PACKAGE_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
 export const PACKAGE_PREFIX_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+\.$/;
 export const PACKAGE_LIKE_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]*)+$/;
 
-export const state = { query:"", app:null, resolved:[], searchController:null, suggestionController:null, resolveController:null, searchCache:new Map(), startedAt:0, timer:null };
+export const state = { query:"", app:null, resolved:[], searchController:null, suggestionController:null, resolveController:null, searchCache:new Map(), startedAt:0, timer:null, progressDepth:0 };
 export const $ = selector => document.querySelector(selector);
 export const dom = { searchInput:$("#searchInput"), clearSearch:$("#clearSearch"), suggestions:$("#searchSuggestions"), results:$("#searchResults"), apiStatus:$("#apiStatus"), progressCard:$("#progressCard"), progressText:$("#progressText"), progressTime:$("#progressTime"), appCard:$("#appCard"), appTitle:$("#appTitle"), appPackage:$("#appPackage"), appMeta:$("#appMeta"), openPlay:$("#openPlay"), variantsCard:$("#variantsCard"), variants:$("#variants"), diagnostics:$("#diagnostics"), diagnosticsBlock:$("#diagnosticsBlock"), variantCount:$("#variantCount") };
 export function escapeHtml(value=""){return String(value).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
