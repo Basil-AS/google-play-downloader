@@ -1,87 +1,91 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Browser-only Google Play downloader: anonymous auth, direct FDFE delivery, APK/split APK/OBB from Google CDN.">
-  <title>Google Play APK Downloader</title>
-  <link rel="stylesheet" href="./assets/app.css?v=20260826-play3">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Поиск Google Play и получение оригинальных base APK, split APK, OBB и APKS для выбранных архитектур.">
+  <meta name="theme-color" content="#1f6f43">
+  <meta name="robots" content="index,follow">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Google Play APK Downloader">
+  <meta property="og:description" content="Поиск по названию или package name, выбор ABI и получение оригинальных файлов Google Play delivery.">
+  <meta property="og:url" content="https://basil-as.github.io/google-play-downloader/">
+  <link rel="canonical" href="https://basil-as.github.io/google-play-downloader/">
+  <link rel="dns-prefetch" href="//google-play-downloader.basil-as.workers.dev">
+  <link rel="dns-prefetch" href="//android.clients.google.com">
+  <link rel="stylesheet" href="css/base.css?v=20260901-1">
+  <link rel="stylesheet" href="css/components.css?v=20260901-1">
+  <title>Google Play APK Downloader — APK и split APK</title>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="./" aria-label="Google Play APK Downloader"><span class="brand-mark" aria-hidden="true">▶</span><span><b>Google Play</b><small>APK Downloader</small></span></a>
-    <div class="header-actions"><span id="providerState" class="status status-off">static: loading</span></div>
+  <header class="hero">
+    <div class="hero-orb hero-orb-a"></div>
+    <div class="hero-orb hero-orb-b"></div>
+    <div class="hero-content">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M7 4.5 18.5 12 7 19.5V4.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </div>
+      <p class="eyebrow">Open-source web tool</p>
+      <h1>Google Play APK Downloader</h1>
+      <p class="hero-description">Ищите приложения в Google Play, выбирайте ARM64 / ARMv7 / x86 / TV и получайте оригинальные base APK, split APK, OBB и APKS без сторонних APK-зеркал.</p>
+      <div class="hero-actions"><a class="primary-action" href="#search">Найти приложение</a><a class="secondary-action" href="https://github.com/Basil-AS/google-play-downloader" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
+      <div class="trust-row"><span>Anonymous auth</span><span>Google Play FDFE</span><span>Оригинальные Google CDN файлы</span></div>
+    </div>
   </header>
 
-  <main class="shell">
-    <section class="hero">
-      <p class="eyebrow">100% STATIC · DIRECT GOOGLE PLAY FDFE</p>
-      <h1>APK и split APK прямо из Google Play</h1>
-      <p class="lead">Без VPS, Docker, backend и расширения. Браузер получает anonymous Google Play auth bundle, вызывает Google FDFE <code>details → purchase → delivery</code> через публичный CORS relay и скачивает файлы с Google CDN.</p>
-      <form id="searchForm" class="searchbar">
-        <input id="query" autocomplete="off" spellcheck="false" placeholder="Название, com.example.app или ссылка Google Play" aria-label="Поиск Google Play">
-        <button class="button primary" type="submit">Найти в Google Play</button>
-      </form>
-      <div id="searchResults" class="search-results" hidden></div>
-    </section>
-
-    <section id="progressCard" class="panel progress-card" hidden>
-      <div class="spinner" aria-hidden="true"></div>
-      <div class="progress-copy"><h2>Запрашиваю Google Play… <span id="progressTime" class="progress-time"></span></h2><p id="progressText">Подготавливаю browser-only запрос.</p></div>
-    </section>
-
-    <section id="appCard" class="panel" hidden>
-      <div class="panel-heading">
-        <div><p class="eyebrow">GOOGLE PLAY PACKAGE</p><h2 id="appTitle">Приложение</h2><p id="appMeta" class="muted"></p><code id="appPackage" class="package-code"></code></div>
-        <div class="archive-actions"><a id="openPlay" class="button ghost" href="#" target="_blank" rel="noopener noreferrer">Google Play</a><button id="resetApp" class="button ghost" type="button">Сменить</button></div>
+  <main class="page-shell">
+    <section id="search" class="search-panel" aria-labelledby="search-title">
+      <div class="search-heading"><div><p class="section-kicker">Каталог Google Play</p><h2 id="search-title">Поиск приложений</h2></div><div id="apiStatus" class="api-status" data-kind="neutral">Готов к поиску</div></div>
+      <div class="search-control">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m16.5 16.5 4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="searchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Название, com.whatsapp или ссылка Google Play" aria-label="Поиск Google Play">
+        <button id="clearSearch" class="clear-search hidden" type="button" aria-label="Очистить поиск">×</button>
+        <div id="searchSuggestions" class="suggestions" hidden></div>
       </div>
+      <div class="search-footer"><p>Полный package name и ссылка Play ищутся точно. Префикс с точкой на конце фильтрует package ID из выдачи Google Play.</p><div class="search-examples"><button type="button" class="example-chip" data-example="org.mozilla.firefox">Точно: Firefox</button><button type="button" class="example-chip" data-example="com.google.">Префикс: Google</button></div></div>
+    </section>
 
-      <div class="client-note"><b>Источник — Google Play.</b> Сторонние APK-каталоги и зеркала не используются. Публичный relay нужен только из-за browser CORS и для передачи Google download cookie.</div>
+    <section id="progressCard" class="progress-card" hidden><span class="spinner" aria-hidden="true"></span><div><strong>Запрашиваю Google Play… <span id="progressTime"></span></strong><p id="progressText">Подготавливаю запрос.</p></div></section>
+    <section class="results-section" aria-live="polite"><div id="searchResults" class="results-grid"></div></section>
 
+    <section id="appCard" class="selected-panel" hidden>
+      <div class="panel-heading"><div><p class="section-kicker">Google Play package</p><h2 id="appTitle">Приложение</h2><p id="appMeta" class="muted"></p><code id="appPackage" class="package-code"></code></div><div class="panel-actions"><a id="openPlay" class="button ghost" href="#" target="_blank" rel="noopener noreferrer">Google Play ↗</a><button id="resetApp" class="button ghost" type="button">Сменить</button></div></div>
+      <div class="client-note"><strong>Источник файлов — Google Play.</strong> Cloudflare Worker используется только как серверный транспорт к приватному Android FDFE и для передачи временных Google download cookies. APK не хранятся на проекте.</div>
       <div class="options-grid">
-        <fieldset>
-          <legend>Архитектуры / профили Google Play</legend>
-          <label class="check"><input type="checkbox" name="arch" value="arm64" checked><span><b>ARM64</b><small>arm64-v8a · основной профиль</small></span></label>
-          <label class="check"><input type="checkbox" name="arch" value="armv7"><span><b>ARMv7</b><small>armeabi-v7a</small></span></label>
-          <label class="check"><input type="checkbox" name="arch" value="x86_64"><span><b>x86_64</b><small>64-bit emulator/ChromeOS</small></span></label>
+        <fieldset><legend>Архитектуры / device profiles</legend>
+          <label class="check"><input type="checkbox" name="arch" value="arm64" checked><span><b>ARM64</b><small>arm64-v8a · основной современный Android</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="armv7"><span><b>ARMv7</b><small>armeabi-v7a · старые 32-bit ARM</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="x86_64"><span><b>x86_64</b><small>эмуляторы / совместимые устройства</small></span></label>
           <label class="check"><input type="checkbox" name="arch" value="x86"><span><b>x86</b><small>32-bit Intel</small></span></label>
-          <label class="check"><input type="checkbox" name="arch" value="tv"><span><b>Android TV</b><small>leanback/television profile</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="tv"><span><b>Android TV</b><small>leanback / television profile</small></span></label>
           <div class="mini-actions"><button id="selectAllArch" type="button" class="text-button">Выбрать всё</button><button id="onlyArm64" type="button" class="text-button">Только ARM64</button></div>
         </fieldset>
-        <fieldset>
-          <legend>Получение</legend>
-          <label class="switch-row"><input id="freshAuth" type="checkbox"><span><b>Новый anonymous token</b><small>Игнорировать 45-минутный browser cache.</small></span></label>
-          <div class="notice original"><b>Google Play delivery:</b> для каждого выбранного профиля выполняются details → purchase → delivery. Показаны base APK, split APK и дополнительные файлы, которые Google реально отдал этому профилю.</div>
+        <fieldset><legend>Регион и конфигурация</legend>
+          <label class="select-row"><span><b>Регион поиска / delivery</b><small>2-letter country для FDFE</small></span><select id="country"><option value="">Auto</option><option value="RU">RU</option><option value="DE">DE</option><option value="US">US</option><option value="GB">GB</option><option value="IN">IN</option></select></label>
+          <label class="select-row"><span><b>Locale</b><small>Языковой профиль anonymous auth</small></span><select id="locale"><option value="ru-RU">Русский (ru-RU)</option><option value="en-US">English (en-US)</option><option value="de-DE">Deutsch (de-DE)</option></select></label>
+          <label class="select-row"><span><b>Density</b><small>Влияет на config density splits</small></span><select id="density"><option value="">Профиль по умолчанию</option><option value="640">xxxhdpi · 640</option><option value="480">xxhdpi · 480</option><option value="420">420 · Pixel profile</option><option value="320">xhdpi · 320</option><option value="240">hdpi · 240</option><option value="160">mdpi · 160</option></select></label>
+          <label class="switch-row"><input id="freshAuth" type="checkbox"><span><b>Новый anonymous token</b><small>Игнорировать локальный 45-минутный auth cache.</small></span></label>
         </fieldset>
-        <div class="resolve-actions"><button id="resolveButton" class="button primary wide" type="button">Получить файлы из Google Play</button><p class="muted">Бесплатные приложения. Доступность зависит от anonymous Google account, региона, device profile и staged rollout Google.</p></div>
       </div>
+      <div class="resolve-actions"><button id="resolveButton" class="button primary wide" type="button">Получить файлы из Google Play</button><p class="muted">Для каждого выбранного профиля выполняется details → purchase → delivery. Доступность зависит от anonymous account, региона, device profile и staged rollout.</p></div>
     </section>
 
-    <section id="variantsCard" class="panel" hidden>
-      <div class="panel-heading manifest-head">
-        <div><p class="eyebrow">GOOGLE DELIVERY</p><h2>Полученные профили</h2><p class="muted">Успешно: <span id="variantCount">0</span>. Файлы перечислены из protobuf delivery response Google.</p></div>
-      </div>
-      <div id="variants" class="variants"></div>
-      <details id="diagnosticsBlock" class="diagnostics" hidden><summary>Неуспешные профили</summary><pre id="diagnostics"></pre></details>
-    </section>
+    <section id="variantsCard" class="selected-panel variants-panel" hidden><div class="panel-heading"><div><p class="section-kicker">Google Play delivery</p><h2>Полученные варианты</h2><p class="muted">Успешных профилей: <span id="variantCount">0</span>. Можно скачать каждый оригинальный файл отдельно или собрать APK-набор в <code>.apks</code>.</p></div></div><div id="variants" class="variants"></div><details id="diagnosticsBlock" class="diagnostics" hidden><summary>Неуспешные профили</summary><pre id="diagnostics"></pre></details></section>
 
     <section class="info-grid">
-      <article><span>01</span><h3>Google Play FDFE</h3><p>Метаданные и delivery URL получаются с android.clients.google.com, а не из зеркала.</p></article>
-      <article><span>02</span><h3>Anonymous auth</h3><p>Временный auth bundle выдаёт Aurora dispenser. Личный Google-аккаунт не требуется.</p></article>
-      <article><span>03</span><h3>Splits</h3><p>Base APK и config splits берутся из Google delivery response для выбранного device profile.</p></article>
-      <article><span>04</span><h3>APKS локально</h3><p>При необходимости браузер скачивает Google APK-файлы и упаковывает их в SAI-compatible .apks.</p></article>
+      <article><span>01</span><h3>Точный package lookup</h3><p>Полный package name или ссылка Google Play не смешиваются с обычной поисковой выдачей.</p></article>
+      <article><span>02</span><h3>Rate-friendly поиск</h3><p>Debounce, AbortController и session cache позволяют подсказкам и основной выдаче переиспользовать один FDFE search.</p></article>
+      <article><span>03</span><h3>Split APK</h3><p>Отображаются base APK, config splits и дополнительные delivery-файлы, которые Google реально отдал выбранному профилю.</p></article>
+      <article><span>04</span><h3>APKS локально</h3><p>Браузер собирает SAI-compatible <code>.apks</code> из оригинальных APK; файлы не переподписываются и не модифицируются.</p></article>
     </section>
   </main>
 
-  <footer>
-    <span>Source: Google Play FDFE/CDN · anonymous auth: Aurora · transport: public CORS relay</span>
-    <span><a href="https://github.com/Basil-AS" rel="noopener">Basil-AS</a> · AI-assisted by OpenAI ChatGPT</span>
-  </footer>
+  <footer class="site-footer"><p>Неофициальный open-source инструмент. Не связан с Google, Google Play или Aurora OSS.</p><div><a href="https://github.com/Basil-AS/google-play-downloader" target="_blank" rel="noopener noreferrer">GitHub</a><span>·</span><a href="https://github.com/Basil-AS/google-play-downloader/issues" target="_blank" rel="noopener noreferrer">Сообщить о проблеме</a></div></footer>
 
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="./assets/runtime-guard.js?v=20260826-play3"></script>
-  <script src="./assets/play-client.js?v=20260826-play3"></script>
-  <script src="./assets/app.js?v=20260826-play3" defer></script>
+  <script src="api-patch.js?v=20260901-1"></script>
+  <script src="js/play-client.js?v=20260901-1"></script>
+  <script type="module" src="js/main.js?v=20260901-1"></script>
 </body>
 </html>

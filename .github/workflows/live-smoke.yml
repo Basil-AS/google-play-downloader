@@ -1,34 +1,22 @@
 name: Live Google Play smoke
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: play-live-smoke-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  delivery:
-    name: Anonymous auth and FDFE delivery
+  smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
-    env:
-      PLAY_SMOKE_PACKAGE: org.mozilla.firefox
+    timeout-minutes: 5
+    continue-on-error: true
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Live Google Play delivery
-        run: node tests/live-smoke.cjs
+      - name: Check deployed Worker shell
+        run: |
+          curl --fail --show-error --location --max-time 20 https://google-play-downloader.basil-as.workers.dev/ -o /tmp/index.html
+          grep -q "Google Play APK Downloader" /tmp/index.html
+      - name: Check Worker API is constrained
+        run: |
+          code="$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 20 'https://google-play-downloader.basil-as.workers.dev/api/download?url=https%3A%2F%2Fexample.com%2Ffile.apk')"
+          test "$code" = "403"

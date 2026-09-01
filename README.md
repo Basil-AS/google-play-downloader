@@ -1,103 +1,119 @@
 # Google Play APK Downloader
 
-A browser-only downloader for **Google Play itself**, designed to run from GitHub Pages.
+Неофициальный open-source веб-инструмент для поиска приложений в **Google Play** и получения тех файлов, которые Google Play delivery отдаёт выбранному Android device profile: `base.apk`, split APK, OBB/дополнительные файлы и локально собранный `.apks`.
 
-**No VPS. No project backend. No Docker. No browser extension. No personal Google account.** Open the page, search Google Play, select one or more device/ABI profiles and request the files that Google Play delivers to those profiles.
+**Основной frontend:** https://basil-as.github.io/google-play-downloader/
 
-Live site: https://basil-as.github.io/google-play-downloader/
+## Архитектура
 
-## Architecture
+Проект приведён к той же схеме, что и `Basil-AS/rustore-downloader`:
 
 ```text
 GitHub Pages
     ↓
-Browser JavaScript
+browser UI
     ↓
-Aurora anonymous auth dispenser
-    ↓
-public CORS relay (transport only)
-    ↓
-android.clients.google.com/fdfe
-    search / details / purchase / delivery
-    ↓
-Google Play CDN
-    ↓
-base APK + split APK + OBB / asset files
+google-play-downloader.basil-as.workers.dev
+    ├─ /api/aurora-auth → Aurora anonymous dispenser
+    ├─ /api/fdfe/*      → android.clients.google.com/fdfe
+    └─ /api/download    → Google delivery CDN
 ```
 
-The APK source is Google Play. **APKCombo, APKPure, APKMirror and other APK mirrors/catalogues are not used.** The public relay only allows an ordinary browser origin to send the headers required by Google's Android FDFE API and, when necessary, forwards Google download cookies to the Google CDN.
+Cloudflare Worker не является APK-зеркалом: файлы не сохраняются на проекте. Он нужен как server-side transport к приватному Android FDFE API и для передачи временных download cookies, которые обычный GitHub Pages JavaScript не может надёжно отправлять напрямую.
 
-The protocol implementation is based on the current open-source Aurora/goopdl Google Play flow: a short-lived anonymous auth bundle contains `authToken`, `gsfId`, device/check-in tokens and device metadata; the browser then performs `details → purchase → delivery` against Google FDFE and decodes the protobuf responses locally.
+## Возможности
 
-## Features
+- поиск по названию через Google Play FDFE;
+- debounce + `AbortController`;
+- dropdown-подсказки;
+- двухминутный search cache: подсказки и основная выдача переиспользуют один FDFE search;
+- локальное ранжирование и отсечение нерелевантного мусора;
+- максимум 8 релевантных карточек в обычной выдаче;
+- полный package name и Google Play URL ищутся точно;
+- package prefix с точкой на конце (`com.google.`) жёстко фильтрует package ID из результатов Google Play search;
+- ARM64, ARMv7, x86_64, x86 и Android TV;
+- country/region, locale и density override;
+- anonymous auth через Aurora dispenser и 45-минутный browser auth cache;
+- retry со свежим token при типичной auth/token ошибке;
+- `details → purchase → delivery`;
+- base APK, split APK, OBB и дополнительные delivery-файлы;
+- скачивание файлов отдельно и локальная сборка SAI-compatible `.apks`;
+- HTTP Range для больших Google CDN downloads через Worker.
 
-- search through Google Play FDFE;
-- exact package ID, e.g. `org.mozilla.firefox`;
-- Google Play URL input (`?id=` is extracted automatically);
-- direct `details`, `purchase` and `delivery` calls to Google;
-- ARM64, ARMv7, x86_64, x86 and Android TV profiles;
-- base APK and split APK enumeration from Google's delivery protobuf;
-- OBB / additional delivery files when Google exposes them;
-- Google-provided versionCode, sizes and hashes where available;
-- direct download of delivered files through the browser;
-- local SAI-compatible `.apks` packaging with JSZip;
-- 45-minute browser cache for anonymous Play auth to avoid repeatedly hitting the dispenser;
-- hard request timeouts so a broken external dependency cannot leave the UI spinning forever.
+> В отличие от RuStore, приватный Play search не предоставляет надёжный публичный способ перечислить **все** приложения по package-prefix. Поэтому prefix-режим здесь строгий по `startsWith`, но ограничен кандидатами, которые вернула поисковая выдача Google Play.
 
-## Anonymous authentication
+## Cloudflare Worker
 
-The page does not ask for your Google credentials. It requests a temporary anonymous Google Play auth bundle from Aurora's public dispenser at `https://auroraoss.com/api/auth` using an Android device profile. The bundle is cached locally in the browser for up to 45 minutes.
+Создай Worker из GitHub-репозитория и укажи:
 
-The dispenser is an external public service and can rate-limit or become unavailable. If it cannot issue an anonymous account, direct Google Play delivery cannot start; the UI reports the error instead of silently hanging.
+```text
+Repository: Basil-AS/google-play-downloader
+Production branch: master
+Build command: npm run build
+Deploy command: npx wrangler deploy
+Root directory: /
+```
 
-## CORS relay
+`Protect with Cloudflare Access` не включай.
 
-Google FDFE is not a browser-facing web API and does not provide the CORS policy needed by a GitHub Pages origin. Therefore requests are transported through a public CORS relay. The relay is **not the application source** and is not a project backend: the target remains `android.clients.google.com/fdfe`, and delivery URLs are accepted only when they belong to known Google domains.
+Ожидаемый production URL:
 
-The current default relay is `corsproxy.io`, the same practical browser transport pattern used by the companion RuStore downloader. Availability therefore depends on the relay allowing the required request headers and binary responses.
+```text
+https://google-play-downloader.basil-as.workers.dev
+```
 
-## Limits
+Он уже прописан backend-адресом для GitHub Pages в `api-patch.js`. Если выберешь другое имя Worker/subdomain, измени `WORKER_ORIGIN`.
 
-- This is an unofficial implementation of Google's private Android FDFE protocol; Google can change it without notice.
-- Anonymous accounts can have regional, device, staged-rollout or acquisition restrictions.
-- Paid apps and apps unavailable to the anonymous account are not guaranteed to work.
-- Selecting several architectures performs separate device-profile deliveries because Google can return different split sets for each profile.
-- Google Play does not provide a complete public archive of every historic version. An old version can only be obtained while Google still delivers that version to a compatible profile/account.
-- Large browser-side `.apks` generation can consume substantial RAM; direct file download is preferable for very large packages.
+`wrangler.jsonc` разворачивает одновременно `dist/` как Static Assets и `worker/site-worker.js` как API backend. После deploy работают и GitHub Pages, и Worker URL.
 
-## Development
+## Безопасность Worker
 
-There is no backend setup. Serve the repository as static files:
+Worker не является универсальным proxy. FDFE разрешены только `/fdfe/search`, `/fdfe/details`, `/fdfe/purchase`, `/fdfe/delivery`. Download proxy принимает только HTTPS URL на разрешённых Google-hosts. CORS внешнего frontend разрешён только для `https://basil-as.github.io` и localhost dev origins.
+
+## Протокольный слой и параллельная поддержка с RuStore
+
+`js/play-client.js` сохраняет существующую Google Play FDFE/protobuf реализацию: device profiles, Aurora auth bundle, FDFE headers, protobuf decoder, details, purchase и delivery parsers.
+
+`api-patch.js` — transport adapter. Он переводит старый relay contract протокольного слоя на собственный constrained Cloudflare Worker. Благодаря этому store-specific FDFE/parser можно обновлять независимо от общего frontend/Worker-кода.
+
+Общие слои с `rustore-downloader` теперь одинаковые по назначению:
+
+```text
+index.html
+css/base.css + css/components.css
+js/common.js + render.js + actions.js + main.js
+api-patch.js
+worker/site-worker.js
+scripts/build.mjs
+wrangler.jsonc
+CI
+```
+
+## Почему не universal APK
+
+App Bundle обычно доставляется набором подписанных APK (`base.apk`, ABI/density/language splits). Пересборка их в один APK потребовала бы новой подписи. Проект сохраняет оригинальные артефакты и предлагает `.apks`.
+
+## Ограничения
+
+- Google Play FDFE — приватный reverse-engineered Android API и может измениться без уведомления.
+- Aurora anonymous dispenser может быть недоступен или rate-limit'ить.
+- Anonymous accounts могут видеть другой регион/staged rollout и не иметь права на конкретный продукт.
+- Paid apps не гарантируются.
+- Package-prefix поиск не является полным перечислением каталога.
+- Большой `.apks` собирается в памяти браузера; для крупных приложений лучше скачивать файлы отдельно.
+
+## Разработка
 
 ```bash
-python -m http.server 8000
+npm install
+npm run build
+npm test
 ```
 
-### Tests
+Live external smoke оставлен только ручным, чтобы downtime Aurora/Google не делал обычный CI красным.
 
-```bash
-node --check assets/play-client.js
-node --check assets/app.js
-node --test tests/play-client.test.cjs
-```
+Проект не использует APKCombo, APKPure, APKMirror и другие APK-зеркала. Google Play flow ориентирован на open-source практики Aurora Store / Aurora GPlayApi и `goopdl`: anonymous authentication, device profiles, purchase/delivery, base/split APK, OBB и дополнительные delivery assets.
 
-The unit tests construct synthetic protobuf messages and verify package parsing, architecture profiles, protobuf decoding, FDFE details fields, purchase tokens and delivery base/split extraction.
+См. [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) и [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
 
-## CI / CD
-
-GitHub Actions validates JavaScript syntax, protobuf unit tests, the direct-Google origin contract, absence of mirror-provider code and absence of the old FastAPI/Docker architecture. GitHub Pages deploys the static `master` branch.
-
-## Privacy
-
-This project operates no application server and keeps no project-side user database. Temporary anonymous auth data is cached in the user's browser. Network requests are still visible to GitHub Pages, the Aurora dispenser, the selected CORS relay and Google, which apply their own logging/privacy policies.
-
-## Contributors
-
-- **Basil-AS** — project owner, maintainer and product direction.
-- **OpenAI ChatGPT (GPT-5.6 Sol)** — AI-assisted architecture, browser FDFE implementation, protobuf tests, CI/CD and documentation. See [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
-
-## License / credits
-
-See [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) and [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
-
-Google Play is a trademark of Google LLC. Aurora Store, corsproxy.io and JSZip are independent third-party projects/services. This repository is unofficial and unaffiliated with Google or those projects.
+Google Play является товарным знаком Google LLC. Aurora Store/Aurora Dispenser — независимые проекты. Репозиторий не связан и не аффилирован с Google или Aurora OSS.

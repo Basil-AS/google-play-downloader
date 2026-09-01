@@ -1,62 +1,63 @@
-name: CI
+name: Verify web app
 
 on:
   push:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  static:
-    name: Direct Google Play browser client
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Node.js 22
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-
-      - name: JavaScript syntax
+          node-version: "24"
+      - name: Check required files
         run: |
-          node --check assets/runtime-guard.js
-          node --check assets/play-client.js
-          node --check assets/app.js
-
-      - name: FDFE protobuf unit tests
-        run: node --test tests/play-client.test.cjs
-
-      - name: Static Pages files
+          test -f index.html
+          test -f api-patch.js
+          test -f js/play-client.js
+          test -f js/common.js
+          test -f js/render.js
+          test -f js/actions.js
+          test -f js/main.js
+          test -f worker/site-worker.js
+          test -f wrangler.jsonc
+          test -f LICENSE
+          test -f NOTICE
+      - name: Check JavaScript syntax
         run: |
-          test -s index.html
-          test -s assets/app.css
-          test -s assets/runtime-guard.js
-          test -s assets/app.js
-          test -s assets/play-client.js
-          test -f .nojekyll
-
-      - name: Direct Google Play contract
+          node --check api-patch.js
+          node --check js/play-client.js
+          node --check js/common.js
+          node --check js/render.js
+          node --check js/actions.js
+          node --check js/main.js
+          node --check worker/site-worker.js
+          node --check scripts/build.mjs
+      - name: Unit tests
+        run: node --test tests/play-client.test.cjs tests/worker.test.mjs
+      - name: Verify transport contract
         run: |
-          grep -q 'DIRECT GOOGLE PLAY FDFE' index.html
-          grep -q 'android.clients.google.com/fdfe' assets/play-client.js
-          grep -q 'https://auroraoss.com/api/auth' assets/play-client.js
-          grep -q 'https://corsproxy.io/' assets/play-client.js
-          grep -q 'cdn.jsdelivr.net/npm/jszip@3.10.1' index.html
-          ! grep -R -E 'ApkComboProvider|provider-apkcombo|apkcombo\.com|apkpure\.com|apkmirror\.com' assets tests
-
-      - name: No server architecture
+          grep -q 'google-play-downloader.basil-as.workers.dev' api-patch.js
+          grep -q '/api/fdfe' api-patch.js
+          grep -q '/api/aurora-auth' worker/site-worker.js
+          grep -q 'play.googleapis.com' worker/site-worker.js
+          ! grep -R -nE 'APKCombo|APKPure|APKMirror' index.html js api-patch.js worker || exit 1
+      - name: Build static assets
+        run: node scripts/build.mjs
+      - name: Verify build output
         run: |
-          test ! -e backend
-          test ! -e docker-compose.yml
-          test ! -e .github/workflows/backend-image.yml
-          ! grep -R -E 'FastAPI|uvicorn|/api/resolve-fast|playDownloaderBackend' index.html assets README.md
+          test -f dist/index.html
+          test -f dist/api-patch.js
+          test -f dist/js/play-client.js
+          test -f dist/js/main.js
+          test -f dist/css/base.css
+          test -f dist/css/components.css

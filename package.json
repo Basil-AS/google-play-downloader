@@ -1,0 +1,7 @@
+{
+  "name": "google-play-downloader",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node scripts/build.mjs", "test": "node --test tests/*.test.cjs tests/*.test.mjs" },
+  "devDependencies": { "wrangler": "^4.127.1" }
+}

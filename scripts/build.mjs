@@ -1,0 +1,2 @@
+import { cp,mkdir,rm } from "node:fs/promises";
+const out=new URL("../dist/",import.meta.url);await rm(out,{recursive:true,force:true});await mkdir(out,{recursive:true});for(const file of["index.html",".nojekyll","api-patch.js"])await cp(new URL(`../${file}`,import.meta.url),new URL(file,out));for(const dir of["css","js"])await cp(new URL(`../${dir}/`,import.meta.url),new URL(`${dir}/`,out),{recursive:true});console.log("Static assets prepared in dist/");

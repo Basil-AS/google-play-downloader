@@ -1,16 +1,21 @@
 Google Play APK Downloader
+Copyright (c) 2026 Basil-AS
 
-This project is an unofficial, static browser client maintained by Basil-AS.
-It is not affiliated with Google LLC, Aurora Store or the relay provider.
+This project is an unofficial open-source Google Play delivery client.
+It is not affiliated with Google LLC or Aurora OSS.
 
 Runtime third-party services/libraries:
-- Google Play Android FDFE / Google CDN: https://android.clients.google.com/
+- Google Play Android FDFE / Google delivery CDN
 - Aurora anonymous authentication dispenser: https://auroraoss.com/api/auth
-- corsproxy.io public CORS relay: https://corsproxy.io/
-- JSZip 3.10.1 loaded from jsDelivr: https://www.jsdelivr.com/package/npm/jszip
+- Cloudflare Workers: project-owned transport/backend
+- JSZip 3.10.1 loaded from jsDelivr
 
-APKCombo, APKPure, APKMirror and other APK mirrors/catalogues are not used by the application.
+The application does not use APKCombo, APKPure, APKMirror or other APK mirror/catalogue providers.
 
-The project does not operate a backend server and does not request or store a user's personal Google credentials. Temporary anonymous auth data is stored in the user's browser cache. External services remain subject to their own terms, availability, logging and licenses.
+The Cloudflare Worker is a constrained transport layer. It does not store APK files and is not designed as a general-purpose proxy. Google delivery files are streamed from allowed Google hosts to the requesting user.
 
-AI-assisted engineering attribution is documented in CONTRIBUTORS.md and relevant commit trailers.
+The browser does not request the user's personal Google credentials. Temporary anonymous auth data may be cached locally in the browser. External services remain subject to their own terms, availability, logging and licenses.
+
+The Google Play FDFE protocol is unofficial/reverse engineered and may change without notice.
+
+AI-assisted engineering attribution is documented in CONTRIBUTORS.md and relevant commit history.
