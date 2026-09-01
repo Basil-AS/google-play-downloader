@@ -4,20 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
-  <meta name="description" content="Поиск Google Play и получение оригинальных base APK, split APK, OBB и APKS для выбранных архитектур.">
+  <meta name="description" content="Поиск Google Play и получение оригинального APK или единого APKS для выбранного device profile.">
   <meta name="theme-color" content="#1f6f43">
   <meta name="robots" content="index,follow">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Google Play APK Downloader">
-  <meta property="og:description" content="Поиск по названию или package name, выбор ABI и получение оригинальных файлов Google Play delivery.">
+  <meta property="og:description" content="Поиск по названию или package name, выбор ABI/device profile и получение оригинального APK либо APKS из Google Play delivery.">
   <meta property="og:url" content="https://basil-as.github.io/google-play-downloader/">
   <link rel="canonical" href="https://basil-as.github.io/google-play-downloader/">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="dns-prefetch" href="//google-play-downloader.basil-as.workers.dev">
   <link rel="dns-prefetch" href="//android.clients.google.com">
   <link rel="stylesheet" href="css/base.css?v=20260901-1">
-  <link rel="stylesheet" href="css/components.css?v=20260901-1">
-  <title>Google Play APK Downloader — APK и split APK</title>
+  <link rel="stylesheet" href="css/components.css?v=20260902-1">
+  <title>Google Play APK Downloader — APK и APKS</title>
 </head>
 <body>
   <header class="hero">
@@ -29,7 +29,7 @@
       </div>
       <p class="eyebrow">Open-source web tool</p>
       <h1>Google Play APK Downloader</h1>
-      <p class="hero-description">Ищите приложения в Google Play, выбирайте ARM64 / ARMv7 / x86 / TV и получайте оригинальные base APK, split APK, OBB и APKS без сторонних APK-зеркал.</p>
+      <p class="hero-description">Ищите приложения в Google Play, выбирайте ARM64 / ARMv7 / x86 / TV и получайте один корректный результат для профиля: оригинальный APK или единый APKS без сторонних APK-зеркал.</p>
       <div class="hero-actions"><a class="primary-action" href="#search">Найти приложение</a><a class="secondary-action" href="https://github.com/Basil-AS/google-play-downloader" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
       <div class="trust-row"><span>Self-hosted auth</span><span>Google Play FDFE</span><span>Оригинальные Google CDN файлы</span></div>
     </div>
@@ -54,31 +54,31 @@
       <div class="panel-heading"><div><p class="section-kicker">Google Play package</p><h2 id="appTitle">Приложение</h2><p id="appMeta" class="muted"></p><code id="appPackage" class="package-code"></code></div><div class="panel-actions"><a id="openPlay" class="button ghost" href="#" target="_blank" rel="noopener noreferrer">Google Play ↗</a><button id="resetApp" class="button ghost" type="button">Сменить</button></div></div>
       <div class="client-note"><strong>Источник файлов — Google Play.</strong> Cloudflare Worker выполняет серверную авторизацию и транспорт к Android FDFE, а также передаёт временные download cookies. APK на проекте не хранятся.</div>
       <div class="options-grid">
-        <fieldset><legend>Архитектуры / device profiles</legend>
-          <label class="check"><input type="checkbox" name="arch" value="arm64" checked><span><b>ARM64</b><small>arm64-v8a · основной современный Android</small></span></label>
+        <fieldset><legend><span class="legend-inline">Архитектуры / device profiles <button type="button" class="help-tip" aria-label="Справка об архитектурах" data-help="Android ABI: armeabi-v7a, arm64-v8a, x86 и x86_64. Отдельного ABI armv9 нет: современные ARMv9-телефоны используют arm64-v8a. ARMv9-функции CPU могут применяться внутри того же 64-bit ABI.">?</button></span></legend>
+          <label class="check"><input type="checkbox" name="arch" value="arm64" checked><span><b>ARM64</b><small>arm64-v8a · ARMv8 / ARMv9 устройства · основной 64-bit Android</small></span></label>
           <label class="check"><input type="checkbox" name="arch" value="armv7"><span><b>ARMv7</b><small>armeabi-v7a · старые 32-bit ARM</small></span></label>
-          <label class="check"><input type="checkbox" name="arch" value="x86_64"><span><b>x86_64</b><small>эмуляторы / совместимые устройства</small></span></label>
-          <label class="check"><input type="checkbox" name="arch" value="x86"><span><b>x86</b><small>32-bit Intel</small></span></label>
-          <label class="check"><input type="checkbox" name="arch" value="tv"><span><b>Android TV</b><small>leanback / television profile</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="x86_64"><span><b>x86_64</b><small>64-bit Intel/AMD · в основном эмуляторы и специальные устройства</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="x86"><span><b>x86</b><small>32-bit Intel · legacy</small></span></label>
+          <label class="check"><input type="checkbox" name="arch" value="tv"><span><b>Android TV</b><small>ARM64/ARMv7 + leanback / television profile</small></span></label>
           <div class="mini-actions"><button id="selectAllArch" type="button" class="text-button">Выбрать всё</button><button id="onlyArm64" type="button" class="text-button">Только ARM64</button></div>
         </fieldset>
         <fieldset><legend>Регион и конфигурация</legend>
-          <label class="select-row"><span><b>Регион поиска / delivery</b><small>2-letter country для FDFE</small></span><select id="country"><option value="">Auto</option><option value="RU">RU</option><option value="DE">DE</option><option value="US">US</option><option value="GB">GB</option><option value="IN">IN</option></select></label>
-          <label class="select-row"><span><b>Locale</b><small>Языковой профиль auth</small></span><select id="locale"><option value="ru-RU">Русский (ru-RU)</option><option value="en-US">English (en-US)</option><option value="de-DE">Deutsch (de-DE)</option></select></label>
-          <label class="select-row"><span><b>Density</b><small>Влияет на config density splits</small></span><select id="density"><option value="">Профиль по умолчанию</option><option value="640">xxxhdpi · 640</option><option value="480">xxhdpi · 480</option><option value="420">420 · Pixel profile</option><option value="320">xhdpi · 320</option><option value="240">hdpi · 240</option><option value="160">mdpi · 160</option></select></label>
-          <label class="switch-row"><input id="freshAuth" type="checkbox"><span><b>Новый auth token</b><small>Игнорировать локальный 45-минутный auth cache.</small></span></label>
+          <label class="select-row"><span><span class="field-title"><b>Регион поиска / delivery</b><button type="button" class="help-tip" aria-label="Справка о регионе" data-help="Регион влияет на параметр gl, MCC/MNC device profile, доступность приложения, цены/лицензирование и staged rollout. Auto не навязывает страну; для воспроизводимого результата лучше выбрать нужный регион явно.">?</button></span><small>Country для каталога и Google Play delivery</small></span><select id="country"><option value="">Auto</option><option value="RU">RU</option><option value="DE">DE</option><option value="US">US</option><option value="GB">GB</option><option value="IN">IN</option></select></label>
+          <label class="select-row"><span><span class="field-title"><b>Locale</b><button type="button" class="help-tip" aria-label="Справка о Locale" data-help="Locale — языковой профиль устройства. Он влияет на язык метаданных и на language config split, но не заменяет Country: страна и язык задаются отдельно.">?</button></span><small>Язык device profile и language split</small></span><select id="locale"><option value="ru-RU">Русский (ru-RU)</option><option value="en-US">English (en-US)</option><option value="de-DE">Deutsch (de-DE)</option></select></label>
+          <label class="select-row"><span><span class="field-title"><b>Density</b><button type="button" class="help-tip" aria-label="Справка о Density" data-help="Density — логическая плотность экрана в dpi, а не разрешение. Google Play использует её для выбора config density split. Auto оставляет 420 dpi из Pixel 9a profile. Стандартные buckets: 160 mdpi, 240 hdpi, 320 xhdpi, 480 xxhdpi, 640 xxxhdpi; также встречаются 213 tvdpi и промежуточные 360/400/420/440/560. Если знаете density устройства — задайте точное значение.">?</button></span><small>Выбор density config split; Auto = профиль 420 dpi</small></span><select id="density"><option value="">Auto · Pixel profile 420</option><option value="640">xxxhdpi · 640</option><option value="560">560 dpi</option><option value="480">xxhdpi · 480</option><option value="440">440 dpi</option><option value="420">420 dpi · Pixel profile</option><option value="400">400 dpi</option><option value="360">360 dpi</option><option value="320">xhdpi · 320</option><option value="240">hdpi · 240</option><option value="213">tvdpi · 213</option><option value="160">mdpi · 160</option><option value="120">ldpi · 120</option></select></label>
+          <label class="switch-row"><input id="freshAuth" type="checkbox"><span><span class="field-title"><b>Новый auth token</b><button type="button" class="help-tip" aria-label="Справка об auth cache" data-help="Принудительно игнорирует локальный 45-минутный auth cache и создаёт свежий Play auth bundle. Это увеличивает число запросов к Google; включайте только при проблемах с токеном, регионом или staged rollout.">?</button></span><small>Обычно оставляйте выключенным.</small></span></label>
         </fieldset>
       </div>
-      <div class="resolve-actions"><button id="resolveButton" class="button primary wide" type="button">Получить файлы из Google Play</button><p class="muted">Для каждого выбранного профиля выполняется details → purchase → delivery. Доступность зависит от аккаунта, региона, device profile и staged rollout.</p></div>
+      <div class="resolve-actions"><button id="resolveButton" class="button primary wide" type="button">Получить из Google Play</button><p class="muted"><span class="field-title"><strong>Формат выдачи</strong><button type="button" class="help-tip" aria-label="Справка о формате APK и APKS" data-help="Если Google Play отдаёт один монолитный APK, сайт скачивает именно его. Если приложение доставляется как base.apk + config/feature splits, сайт собирает один APKS для выбранного профиля. Base APK отдельно не предлагается, потому что без обязательных splits он может не устанавливаться.">?</button></span> Один профиль → один корректный результат: APK для монолитной доставки или APKS для split-доставки.</p></div>
     </section>
 
-    <section id="variantsCard" class="selected-panel variants-panel" hidden><div class="panel-heading"><div><p class="section-kicker">Google Play delivery</p><h2>Полученные варианты</h2><p class="muted">Успешных профилей: <span id="variantCount">0</span>. Можно скачать каждый оригинальный файл отдельно или собрать APK-набор в <code>.apks</code>.</p></div></div><div id="variants" class="variants"></div><details id="diagnosticsBlock" class="diagnostics" hidden><summary>Неуспешные профили</summary><pre id="diagnostics"></pre></details></section>
+    <section id="variantsCard" class="selected-panel variants-panel" hidden><div class="panel-heading"><div><p class="section-kicker">Google Play delivery</p><h2>Полученные варианты</h2><p class="muted">Успешных профилей: <span id="variantCount">0</span>. Для каждого профиля выдаётся один APK либо один APKS; отдельные split APK показаны только как состав набора.</p></div></div><div id="variants" class="variants"></div><details id="diagnosticsBlock" class="diagnostics" hidden><summary>Неуспешные профили</summary><pre id="diagnostics"></pre></details></section>
 
     <section class="info-grid">
       <article><span>01</span><h3>Точный package lookup</h3><p>Полный package name или ссылка Google Play не смешиваются с обычной поисковой выдачей.</p></article>
       <article><span>02</span><h3>Rate-friendly поиск</h3><p>Debounce, AbortController и session cache позволяют подсказкам и основной выдаче переиспользовать один FDFE search.</p></article>
-      <article><span>03</span><h3>Split APK</h3><p>Отображаются base APK, config splits и дополнительные delivery-файлы, которые Google реально отдал выбранному профилю.</p></article>
-      <article><span>04</span><h3>APKS локально</h3><p>Браузер собирает SAI-compatible <code>.apks</code> из оригинальных APK; файлы не переподписываются и не модифицируются.</p></article>
+      <article><span>03</span><h3>APK или APKS</h3><p>Монолитная доставка скачивается одним APK. Split-доставка собирается в APKS из base + ABI/density/language/feature splits.</p></article>
+      <article><span>04</span><h3>Оригинальные подписи</h3><p>APK внутри APKS не перепаковываются и не переподписываются: сохраняются оригинальные Google Play артефакты.</p></article>
     </section>
   </main>
 
@@ -87,6 +87,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="api-patch.js?v=20260901-3"></script>
   <script src="js/play-client.js?v=20260901-1"></script>
-  <script type="module" src="js/main.js?v=20260901-3"></script>
+  <script type="module" src="js/main.js?v=20260902-1"></script>
 </body>
 </html>
