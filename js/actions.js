@@ -3,12 +3,12 @@ import {
   PACKAGE_RE, PACKAGE_PREFIX_RE, PACKAGE_LIKE_RE,
   normalize, extractPackage, escapeHtml,
   fileRows, selectedArchitectures, settings
-} from "./common.js?v=20260902-9";
+} from "./common.js?v=20260902-11";
 import {
   setStatus, emptyState, loadingState, showError,
   startProgress, progress, stopProgress,
   renderResults, renderSelectedApp, renderResolved
-} from "./render.js?v=20260902-10";
+} from "./render.js?v=20260902-11";
 
 const SEARCH_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_PREFIX = `gpd:search:${String(transport?.version || "unknown")}:`;
@@ -68,6 +68,8 @@ async function cachedSearch(query, signal, cfg, fresh = false) {
   const rows = await P.search(query, "arm64", {
     signal,
     country: cfg.country,
+    locale: cfg.locale,
+    density: cfg.density,
     fresh
   });
   state.searchCache.set(key, { expiresAt: Date.now() + SEARCH_TTL_MS, rows });
@@ -123,6 +125,8 @@ export async function selectPackage(packageName, options = {}) {
     const { app } = await P.details(pkg, "arm64", {
       signal,
       country: cfg.country,
+      locale: cfg.locale,
+      density: cfg.density,
       fresh: profileChanged
     });
     if (!app?.package || normalize(app.package) !== normalize(pkg)) {
@@ -245,14 +249,15 @@ function abortResolve() {
 }
 
 async function resolveOne(packageName, arch, cfg, signal, fresh) {
+  const opts = { signal, fresh, country: cfg.country, locale: cfg.locale, density: cfg.density };
   try {
-    return await P.resolve(packageName, arch, { signal, fresh, country: cfg.country });
+    return await P.resolve(packageName, arch, opts);
   } catch (error) {
     if (signal.aborted) throw error;
     const message = String(error?.message || error);
     if (!fresh && /(?:401|403|auth|token|credential)/i.test(message)) {
       transport.clearAuthCache();
-      return P.resolve(packageName, arch, { signal, fresh: true, country: cfg.country });
+      return P.resolve(packageName, arch, { ...opts, fresh: true });
     }
     throw error;
   }
@@ -278,7 +283,7 @@ export async function resolveSelected() {
   try {
     for (let index = 0; index < arches.length; index++) {
       const arch = arches[index];
-      progress(`${ARCH_LABELS[arch] || arch}: auth → details → purchase → delivery (${index + 1}/${arches.length})`);
+      progress(`${ARCH_LABELS[arch] || arch}: details → delivery → acquire/purchase fallback (${index + 1}/${arches.length})`);
       try {
         const result = await resolveOne(
           state.app.package,
