@@ -26,6 +26,7 @@ jobs:
           test -f api-patch.js
           test -f js/play-client.js
           test -f tests/play-client-runtime.cjs
+          test -f tests/search-parser.test.cjs
           test -f tests/checkin-fixed64.test.mjs
           test -f js/common.js
           test -f js/render.js
@@ -43,6 +44,7 @@ jobs:
           node --check api-patch.js
           node --check js/play-client.js
           node --check tests/play-client-runtime.cjs
+          node --check tests/search-parser.test.cjs
           node --check tests/checkin-fixed64.test.mjs
           node --check js/common.js
           node --check js/render.js
@@ -52,7 +54,7 @@ jobs:
           node --check worker/google-auth.js
           node --check scripts/build.mjs
       - name: Unit tests
-        run: node --test tests/play-client.test.cjs tests/worker.test.mjs tests/checkin-fixed64.test.mjs
+        run: node --test tests/play-client.test.cjs tests/search-parser.test.cjs tests/worker.test.mjs tests/checkin-fixed64.test.mjs
       - name: Verify transport contract
         run: |
           grep -q 'google-play-downloader.basil-as.workers.dev' api-patch.js
