@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260902-5";
+  const VERSION = "20260902-6";
   const WORKER_ORIGIN = "https://google-play-downloader.basil-as.workers.dev";
   const nativeFetch = window.fetch.bind(window);
   const COUNTRY_MCC = Object.freeze({
@@ -63,8 +63,9 @@
       if (profileOptions.density) profile["Screen.Density"] = profileOptions.density;
       const operator = COUNTRY_MCC[profileOptions.country];
       if (operator) {
-        profile.CellOperator = operator[0];
-        profile.SimOperator = operator[1];
+        const mccMnc = `${operator[0]}${operator[1]}`;
+        profile.CellOperator = mccMnc;
+        profile.SimOperator = mccMnc;
       }
       return JSON.stringify(profile);
     } catch {
