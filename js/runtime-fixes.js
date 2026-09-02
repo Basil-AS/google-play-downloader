@@ -3,7 +3,8 @@ const F = window.fetch.bind(window);
 const icons = new Map();
 const searchIcons = new Map();
 const dec = new TextDecoder();
-const V = "20260902-2";
+const enc = new TextEncoder();
+const V = "20260902-3";
 
 function vi(d, s) {
   let sh = 0n, v = 0n;
@@ -135,11 +136,37 @@ function target(i) {
   } catch { return null; }
 }
 
+function pv(n) {
+  let x = BigInt(n), out = [];
+  while (x > 0x7fn) { out.push(Number((x & 0x7fn) | 0x80n)); x >>= 7n; }
+  out.push(Number(x));
+  return out;
+}
+
+function logRequest(packageName) {
+  const query = enc.encode(`confirmFreeDownload?doc=${packageName}`);
+  return new Uint8Array([
+    ...pv(8), ...pv(Date.now()),
+    ...pv(18), ...pv(query.length), ...query
+  ]);
+}
+
+async function registerFreeDownload(packageName, auth, options = {}) {
+  const headers = B.buildHeaders(auth, options.country);
+  headers["Content-Type"] = "application/x-protobuf";
+  const url = B.relayUrl("https://android.clients.google.com/fdfe/log", headers);
+  const response = await F(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-protobuf" },
+    body: logRequest(packageName),
+    cache: "no-store",
+    referrerPolicy: "no-referrer"
+  });
+  if (!response.ok) throw new Error(`Google Play log HTTP ${response.status}`);
+}
+
 window.fetch = async (i, n = {}) => {
   const t = target(i), r = await F(i, n);
-  if (t?.hostname === "android.clients.google.com" && t.pathname === "/fdfe/purchase" && r.status !== 401 && !r.ok) {
-    return new Response(null, { status: 204, headers: r.headers });
-  }
   if (t?.hostname === "android.clients.google.com" && t.pathname === "/fdfe/search" && r.ok) {
     try {
       searchIcons.set(t.searchParams.get("q") || "", parseSearch(new Uint8Array(await r.clone().arrayBuffer())));
@@ -167,7 +194,9 @@ window.GooglePlayClient = Object.freeze({
   },
   async resolve(packageName, arch = "arm64", options = {}) {
     try {
-      return await B.resolve(packageName, arch, options);
+      const pre = await B.details(packageName, arch, options);
+      await registerFreeDownload(packageName, pre.auth, options);
+      return await B.resolve(packageName, arch, { ...options, auth: pre.auth });
     } catch (error) {
       try {
         const details = await B.details(packageName, arch, options);
