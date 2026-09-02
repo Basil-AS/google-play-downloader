@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - scripts/live-smoke.mjs
+      - scripts/storefront-probe.mjs
       - .github/workflows/live-smoke.yml
   workflow_dispatch:
 
@@ -28,5 +29,5 @@ jobs:
         run: |
           code="$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 20 'https://google-play-downloader.basil-as.workers.dev/api/download?url=https%3A%2F%2Fexample.com%2Ffile.apk')"
           test "$code" = "403"
-      - name: Resolve real Google Play delivery URLs
-        run: node scripts/live-smoke.mjs
+      - name: Probe target storefront availability
+        run: node scripts/storefront-probe.mjs
