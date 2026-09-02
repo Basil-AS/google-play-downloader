@@ -25,6 +25,7 @@ jobs:
           test -f favicon.ico
           test -f api-patch.js
           test -f js/play-client.js
+          test -f js/runtime-fixes.js
           test -f tests/play-client-runtime.cjs
           test -f tests/search-parser.test.cjs
           test -f tests/checkin-fixed64.test.mjs
@@ -43,6 +44,7 @@ jobs:
         run: |
           node --check api-patch.js
           node --check js/play-client.js
+          node --check js/runtime-fixes.js
           node --check tests/play-client-runtime.cjs
           node --check tests/search-parser.test.cjs
           node --check tests/checkin-fixed64.test.mjs
@@ -73,6 +75,7 @@ jobs:
           test -f dist/favicon.ico
           test -f dist/api-patch.js
           test -f dist/js/play-client.js
+          test -f dist/js/runtime-fixes.js
           test -f dist/js/main.js
           test -f dist/css/base.css
           test -f dist/css/components.css
