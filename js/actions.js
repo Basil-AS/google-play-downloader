@@ -3,14 +3,15 @@ import {
   PACKAGE_RE, PACKAGE_PREFIX_RE, PACKAGE_LIKE_RE,
   normalize, searchTokens, extractPackage, escapeHtml,
   fileRows, selectedArchitectures, settings
-} from "./common.js";
+} from "./common.js?v=20260902-7";
 import {
   setStatus, emptyState, loadingState, showError,
   startProgress, progress, stopProgress,
   renderResults, renderSelectedApp, renderResolved
-} from "./render.js";
+} from "./render.js?v=20260902-7";
 
 const SEARCH_TTL_MS = 2 * 60 * 1000;
+const SEARCH_CACHE_PREFIX = `gpd:search:${String(transport?.version || "unknown")}:`;
 const MAX_VISIBLE_RESULTS = 8;
 const ARCH_LABELS = {
   arm64: "ARM64", armv7: "ARMv7", x86_64: "x86_64", x86: "x86", tv: "Android TV"
@@ -35,7 +36,7 @@ function cacheKey(query, cfg) {
 
 function sessionRead(key) {
   try {
-    const raw = sessionStorage.getItem(`gpd:search:v3:${key}`);
+    const raw = sessionStorage.getItem(`${SEARCH_CACHE_PREFIX}${key}`);
     if (!raw) return null;
     const value = JSON.parse(raw);
     return value?.expiresAt > Date.now() && Array.isArray(value.rows) ? value.rows : null;
@@ -46,7 +47,7 @@ function sessionRead(key) {
 
 function sessionWrite(key, rows) {
   try {
-    sessionStorage.setItem(`gpd:search:v3:${key}`, JSON.stringify({
+    sessionStorage.setItem(`${SEARCH_CACHE_PREFIX}${key}`, JSON.stringify({
       expiresAt: Date.now() + SEARCH_TTL_MS,
       rows
     }));
@@ -200,7 +201,7 @@ export async function searchApps(query) {
     ? `Ищем package prefix ${trimmed}*…`
     : "Ищем наиболее релевантные приложения…");
   setStatus("Google Play: search…", "loading");
-  startProgress("Anonymous auth → Google Play FDFE search…");
+  startProgress("Google Play auth → FDFE search…");
 
   try {
     let rows;
