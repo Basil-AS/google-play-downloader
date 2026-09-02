@@ -4,7 +4,7 @@ const icons = new Map();
 const searchIcons = new Map();
 const dec = new TextDecoder();
 const enc = new TextEncoder();
-const V = "20260902-3";
+const V = "20260902-4";
 
 function vi(d, s) {
   let sh = 0n, v = 0n;
@@ -140,29 +140,67 @@ function pv(n) {
   let x = BigInt(n), out = [];
   while (x > 0x7fn) { out.push(Number((x & 0x7fn) | 0x80n)); x >>= 7n; }
   out.push(Number(x));
+  return new Uint8Array(out);
+}
+
+function join(...parts) {
+  const size = parts.reduce((n, part) => n + part.length, 0);
+  const out = new Uint8Array(size);
+  let offset = 0;
+  for (const part of parts) { out.set(part, offset); offset += part.length; }
   return out;
 }
 
-function logRequest(packageName) {
-  const query = enc.encode(`confirmFreeDownload?doc=${packageName}`);
-  return new Uint8Array([
-    ...pv(8), ...pv(Date.now()),
-    ...pv(18), ...pv(query.length), ...query
-  ]);
+function pvi(field, value) {
+  return join(pv((field << 3) | 0), pv(value));
 }
 
-async function registerFreeDownload(packageName, auth, options = {}) {
+function pbytes(field, value) {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value || []);
+  return join(pv((field << 3) | 2), pv(bytes.length), bytes);
+}
+
+function pstr(field, value) {
+  return pbytes(field, enc.encode(String(value)));
+}
+
+function acquireNonce() {
+  const bytes = new Uint8Array(256);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `nonce=${btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "")}`;
+}
+
+function acquireRequest(packageName, versionCode, offerType = 1) {
+  const payload = join(pstr(1, packageName), pvi(2, 1), pvi(3, 3));
+  const pkg = join(pbytes(1, payload), pvi(2, 1));
+  const version = join(pvi(1, versionCode), pvi(3, 0));
+  const m30 = join(pvi(1, 2), pvi(2, 0));
+  return join(
+    pbytes(1, pkg),
+    pbytes(12, version),
+    pvi(13, offerType),
+    pvi(15, 0),
+    pstr(22, acquireNonce()),
+    pvi(25, 2),
+    pbytes(30, m30)
+  );
+}
+
+async function acquireApp(packageName, versionCode, offerType, auth, options = {}) {
   const headers = B.buildHeaders(auth, options.country);
   headers["Content-Type"] = "application/x-protobuf";
-  const url = B.relayUrl("https://android.clients.google.com/fdfe/log", headers);
+  const url = B.relayUrl("https://android.clients.google.com/fdfe/acquire", headers);
   const response = await F(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-protobuf" },
-    body: logRequest(packageName),
+    body: acquireRequest(packageName, versionCode, offerType),
     cache: "no-store",
     referrerPolicy: "no-referrer"
   });
-  if (!response.ok) throw new Error(`Google Play log HTTP ${response.status}`);
+  return response.ok;
 }
 
 window.fetch = async (i, n = {}) => {
@@ -195,7 +233,8 @@ window.GooglePlayClient = Object.freeze({
   async resolve(packageName, arch = "arm64", options = {}) {
     try {
       const pre = await B.details(packageName, arch, options);
-      await registerFreeDownload(packageName, pre.auth, options);
+      const meta = detailMeta(pre.raw);
+      await acquireApp(packageName, pre.app.versionCode, meta.offerType || 1, pre.auth, options).catch(() => false);
       return await B.resolve(packageName, arch, { ...options, auth: pre.auth });
     } catch (error) {
       try {
