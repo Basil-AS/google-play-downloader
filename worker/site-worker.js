@@ -16,7 +16,7 @@ const ALLOWED_FDFE_PATHS = [
   /^\/fdfe\/search$/,
   /^\/fdfe\/searchList$/,
   /^\/fdfe\/details$/,
-  /^\/fdfe\/log$/,
+  /^\/fdfe\/acquire$/,
   /^\/fdfe\/purchase$/,
   /^\/fdfe\/delivery$/
 ];
