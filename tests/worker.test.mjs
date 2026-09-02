@@ -18,19 +18,19 @@ const profile = {
   "HasHardKeyboard":"false","HasFiveWayNavigation":"false","Roaming":"mobile-notroaming","CellOperator":"310","SimOperator":"38","TimeZone":"UTC"
 };
 
-test("Worker forwards only allowed FDFE request", async () => {
+test("Worker keeps non-search FDFE on android.clients and filters headers", async () => {
   const calls = []; const oldFetch = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => { calls.push({ url: String(url), init }); return new Response(new Uint8Array([1,2,3]), { status:200, headers:{"Content-Type":"application/x-protobuf"} }); };
   try {
-    const req = new Request("https://google-play-downloader.basil-as.workers.dev/api/fdfe/search?q=firefox&c=3&gl=DE", { headers:{ Origin:"https://basil-as.github.io", "X-Play-Headers":b64({Authorization:"Bearer test-token","X-DFE-Device-Id":"123","User-Agent":"Android-Finsky/test","X-Not-Allowed":"drop-me"}) } });
-    const res = await worker.fetch(req,{ASSETS:assets}); assert.equal(res.status,200); assert.equal(calls.length,1); assert.match(calls[0].url,/^https:\/\/android\.clients\.google\.com\/fdfe\/search\?/); assert.match(calls[0].url,/gl=DE/);
+    const req = new Request("https://google-play-downloader.basil-as.workers.dev/api/fdfe/details?doc=org.mozilla.firefox&gl=DE", { headers:{ Origin:"https://basil-as.github.io", "X-Play-Headers":b64({Authorization:"Bearer test-token","X-DFE-Device-Id":"123","User-Agent":"Android-Finsky/test","X-Not-Allowed":"drop-me"}) } });
+    const res = await worker.fetch(req,{ASSETS:assets}); assert.equal(res.status,200); assert.equal(calls.length,1); assert.match(calls[0].url,/^https:\/\/android\.clients\.google\.com\/fdfe\/details\?/); assert.match(calls[0].url,/gl=DE/);
     const headers=new Headers(calls[0].init.headers); assert.equal(headers.get("Authorization"),"Bearer test-token"); assert.equal(headers.get("X-DFE-Device-Id"),"123"); assert.equal(headers.get("User-Agent"),"Android-Finsky/test"); assert.equal(headers.get("X-Not-Allowed"),null);
   } finally { globalThis.fetch=oldFetch; }
 });
 
-test("Worker follows searchList continuation returned by modern Google Play search", async () => {
+test("Worker uses play-fe search and follows ptkn continuation", async () => {
   const calls=[]; const oldFetch=globalThis.fetch;
-  const continuation="searchList?q=firefox&o=0&c=3&ksm=1&sb=5&ctntkn=abc_DEF-123";
+  const continuation="searchList?q=firefox&o=0&c=3&ksm=1&sb=5&ps=1&ptkn=abc_DEF-123";
   globalThis.fetch=async(url,init={})=>{
     const u=String(url); calls.push({url:u,init});
     if(u.includes("/fdfe/search?")) return new Response(fieldBytes(1,fieldBytes(10,continuation)),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
@@ -40,8 +40,29 @@ test("Worker follows searchList continuation returned by modern Google Play sear
   try {
     const req=new Request("https://worker/api/fdfe/search?q=firefox&c=3",{headers:{Origin:"https://basil-as.github.io","X-Play-Headers":b64({Authorization:"Bearer x"})}});
     const res=await worker.fetch(req,{ASSETS:assets});
-    assert.equal(res.status,200); assert.equal(calls.length,2); assert.match(calls[1].url,/\/fdfe\/searchList\?/); assert.match(calls[1].url,/ctntkn=abc_DEF-123/);
+    assert.equal(res.status,200); assert.equal(calls.length,2);
+    assert.match(calls[0].url,/^https:\/\/play-fe\.googleapis\.com\/fdfe\/search\?/);
+    assert.match(calls[0].url,/sb=5/); assert.match(calls[0].url,/ksm=1/); assert.match(calls[0].url,/ps=1/); assert.match(calls[0].url,/nocache_pwr=true/);
+    assert.match(calls[1].url,/^https:\/\/play-fe\.googleapis\.com\/fdfe\/searchList\?/); assert.match(calls[1].url,/ptkn=abc_DEF-123/);
+    assert.equal(res.headers.get("X-Play-Search-Flow"),"play-fe-ptkn");
     assert.deepEqual([...new Uint8Array(await res.arrayBuffer())],[9,8,7]);
+  } finally {globalThis.fetch=oldFetch;}
+});
+
+test("Worker does not surface a failed Google continuation as DF-DFERH", async () => {
+  const calls=[]; const oldFetch=globalThis.fetch;
+  const first=fieldBytes(1,fieldBytes(10,"searchList?q=mail&o=0&c=3&ksm=1&sb=5&ptkn=bad-token"));
+  globalThis.fetch=async(url,init={})=>{
+    const u=String(url); calls.push({url:u,init});
+    if(u.includes("/fdfe/search?")) return new Response(first,{status:200,headers:{"Content-Type":"application/x-protobuf"}});
+    if(u.includes("/fdfe/searchList?")) return new Response("DF-DFERH-01",{status:400});
+    throw new Error(`Unexpected URL ${u}`);
+  };
+  try {
+    const req=new Request("https://worker/api/fdfe/search?q=mail&c=3",{headers:{Origin:"https://basil-as.github.io","X-Play-Headers":b64({Authorization:"Bearer x"})}});
+    const res=await worker.fetch(req,{ASSETS:assets});
+    assert.equal(res.status,200); assert.equal(calls.length,2); assert.equal(res.headers.get("X-Play-Search-Flow"),"play-fe-continuation-fallback");
+    assert.deepEqual(Buffer.from(await res.arrayBuffer()),first);
   } finally {globalThis.fetch=oldFetch;}
 });
 
