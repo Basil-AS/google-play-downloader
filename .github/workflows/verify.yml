@@ -73,9 +73,7 @@ jobs:
           grep -q 'play.googleapis.com' worker/site-worker.js
           grep -q '/fdfe\\/acquire' worker/site-worker.js
           ! grep -q '/fdfe\\/log' worker/site-worker.js
-          grep -q 'mode.*anonymous' worker/site-worker-v2.js
-          grep -q 'com.aurora.store' worker/site-worker-v2.js
-          grep -q 'worker/site-worker-v2.js' wrangler.jsonc
+          grep -q 'worker/site-worker.js' wrangler.jsonc
           grep -q 'X-DFE-Phenotype' js/runtime-fixes.js
           ! grep -q 'runtime-fixes.js' js/common.js
           ! grep -q 'const AURORA_AUTH' worker/site-worker.js
