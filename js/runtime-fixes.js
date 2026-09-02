@@ -4,7 +4,7 @@ const icons = new Map();
 const searchIcons = new Map();
 const dec = new TextDecoder();
 const enc = new TextEncoder();
-const V = "20260902-4";
+const V = "20260902-5";
 
 function vi(d, s) {
   let sh = 0n, v = 0n;
@@ -234,8 +234,41 @@ window.GooglePlayClient = Object.freeze({
     try {
       const pre = await B.details(packageName, arch, options);
       const meta = detailMeta(pre.raw);
-      await acquireApp(packageName, pre.app.versionCode, meta.offerType || 1, pre.auth, options).catch(() => false);
-      return await B.resolve(packageName, arch, { ...options, auth: pre.auth });
+      const offerType = meta.offerType || 1;
+      await acquireApp(packageName, pre.app.versionCode, offerType, pre.auth, options).catch(() => false);
+
+      const headers = B.buildHeaders(pre.auth, options.country);
+      const purchaseTarget = new URL("https://android.clients.google.com/fdfe/purchase");
+      purchaseTarget.searchParams.set("doc", packageName);
+      purchaseTarget.searchParams.set("ot", String(offerType));
+      purchaseTarget.searchParams.set("vc", String(pre.app.versionCode));
+      const purchaseResponse = await F(B.relayUrl(purchaseTarget.toString(), headers), {
+        method: "POST",
+        cache: "no-store",
+        referrerPolicy: "no-referrer"
+      });
+      const purchaseRaw = new Uint8Array(await purchaseResponse.arrayBuffer());
+      if (!purchaseResponse.ok) throw new Error(`Google Play purchase HTTP ${purchaseResponse.status}`);
+      const token = B.parsePurchase(purchaseRaw);
+
+      const deliveryTarget = new URL("https://android.clients.google.com/fdfe/delivery");
+      deliveryTarget.searchParams.set("doc", packageName);
+      deliveryTarget.searchParams.set("ot", String(offerType));
+      deliveryTarget.searchParams.set("vc", String(pre.app.versionCode));
+      if (token) deliveryTarget.searchParams.set("dtok", token);
+      const deliveryResponse = await F(B.relayUrl(deliveryTarget.toString(), headers), {
+        method: "GET",
+        cache: "no-store",
+        referrerPolicy: "no-referrer"
+      });
+      const deliveryRaw = new Uint8Array(await deliveryResponse.arrayBuffer());
+      if (!deliveryResponse.ok) throw new Error(`Google Play delivery HTTP ${deliveryResponse.status}`);
+      const delivery = B.parseDelivery(deliveryRaw);
+      if (!delivery.base.url) throw new Error("Google Play не вернул download URL для этого профиля/версии");
+      delivery.versionCode ||= pre.app.versionCode;
+      delivery.base.name = `${packageName}-${delivery.versionCode}.apk`;
+      delivery.splits.forEach(s => { s.name = `${packageName}-${delivery.versionCode}-${s.name}.apk`; });
+      return { arch, app: pre.app, delivery };
     } catch (error) {
       try {
         const details = await B.details(packageName, arch, options);
