@@ -33,8 +33,8 @@ test("Worker uses play-fe search and follows ptkn continuation", async () => {
   const continuation="searchList?q=firefox&o=0&c=3&ksm=1&sb=5&ps=1&ptkn=abc_DEF-123";
   globalThis.fetch=async(url,init={})=>{
     const u=String(url); calls.push({url:u,init});
-    if(u.includes("/fdfe/search?")) return new Response(fieldBytes(1,fieldBytes(10,continuation)),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
-    if(u.includes("/fdfe/searchList?")) return new Response(new Uint8Array([9,8,7]),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
+    if(u.includes("play-fe.googleapis.com/fdfe/search?")) return new Response(fieldBytes(1,fieldBytes(10,continuation)),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
+    if(u.includes("play-fe.googleapis.com/fdfe/searchList?")) return new Response(new Uint8Array([9,8,7]),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
     throw new Error(`Unexpected URL ${u}`);
   };
   try {
@@ -49,20 +49,37 @@ test("Worker uses play-fe search and follows ptkn continuation", async () => {
   } finally {globalThis.fetch=oldFetch;}
 });
 
-test("Worker does not surface a failed Google continuation as DF-DFERH", async () => {
+test("Worker falls back to android.clients searchList when Play continuation fails", async () => {
   const calls=[]; const oldFetch=globalThis.fetch;
   const first=fieldBytes(1,fieldBytes(10,"searchList?q=mail&o=0&c=3&ksm=1&sb=5&ptkn=bad-token"));
   globalThis.fetch=async(url,init={})=>{
     const u=String(url); calls.push({url:u,init});
-    if(u.includes("/fdfe/search?")) return new Response(first,{status:200,headers:{"Content-Type":"application/x-protobuf"}});
-    if(u.includes("/fdfe/searchList?")) return new Response("DF-DFERH-01",{status:400});
+    if(u.includes("play-fe.googleapis.com/fdfe/search?")) return new Response(first,{status:200,headers:{"Content-Type":"application/x-protobuf"}});
+    if(u.includes("play-fe.googleapis.com/fdfe/searchList?")) return new Response("DF-DFERH-01",{status:400});
+    if(u.includes("android.clients.google.com/fdfe/searchList?")) return new Response(new Uint8Array([4,5,6]),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
     throw new Error(`Unexpected URL ${u}`);
   };
   try {
     const req=new Request("https://worker/api/fdfe/search?q=mail&c=3",{headers:{Origin:"https://basil-as.github.io","X-Play-Headers":b64({Authorization:"Bearer x"})}});
     const res=await worker.fetch(req,{ASSETS:assets});
-    assert.equal(res.status,200); assert.equal(calls.length,2); assert.equal(res.headers.get("X-Play-Search-Flow"),"play-fe-continuation-fallback");
-    assert.deepEqual(Buffer.from(await res.arrayBuffer()),first);
+    assert.equal(res.status,200); assert.equal(calls.length,3); assert.equal(res.headers.get("X-Play-Search-Flow"),"android-searchList-fallback");
+    assert.deepEqual([...new Uint8Array(await res.arrayBuffer())],[4,5,6]);
+  } finally {globalThis.fetch=oldFetch;}
+});
+
+test("Worker falls back to android.clients searchList when play-fe search itself fails", async () => {
+  const calls=[]; const oldFetch=globalThis.fetch;
+  globalThis.fetch=async(url,init={})=>{
+    const u=String(url); calls.push({url:u,init});
+    if(u.includes("play-fe.googleapis.com/fdfe/search?")) return new Response("blocked",{status:403});
+    if(u.includes("android.clients.google.com/fdfe/searchList?")) return new Response(new Uint8Array([7,7,7]),{status:200,headers:{"Content-Type":"application/x-protobuf"}});
+    throw new Error(`Unexpected URL ${u}`);
+  };
+  try {
+    const req=new Request("https://worker/api/fdfe/search?q=spotify&c=3",{headers:{Origin:"https://basil-as.github.io","X-Play-Headers":b64({Authorization:"Bearer x"})}});
+    const res=await worker.fetch(req,{ASSETS:assets});
+    assert.equal(res.status,200); assert.equal(calls.length,2); assert.equal(res.headers.get("X-Play-Search-Flow"),"android-searchList-fallback");
+    assert.deepEqual([...new Uint8Array(await res.arrayBuffer())],[7,7,7]);
   } finally {globalThis.fetch=oldFetch;}
 });
 
