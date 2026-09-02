@@ -1,6 +1,11 @@
 name: Live Google Play smoke
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - scripts/live-smoke.mjs
+      - .github/workflows/live-smoke.yml
   workflow_dispatch:
 
 permissions:
@@ -9,9 +14,12 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    continue-on-error: true
+    timeout-minutes: 4
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
       - name: Check deployed Worker shell
         run: |
           curl --fail --show-error --location --max-time 20 https://google-play-downloader.basil-as.workers.dev/ -o /tmp/index.html
@@ -20,3 +28,5 @@ jobs:
         run: |
           code="$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 20 'https://google-play-downloader.basil-as.workers.dev/api/download?url=https%3A%2F%2Fexample.com%2Ffile.apk')"
           test "$code" = "403"
+      - name: Resolve real Google Play delivery URLs
+        run: node scripts/live-smoke.mjs
