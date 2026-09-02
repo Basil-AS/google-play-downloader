@@ -29,6 +29,7 @@ jobs:
           test -f tests/play-client-runtime.cjs
           test -f tests/search-parser.test.cjs
           test -f tests/checkin-fixed64.test.mjs
+          test -f tests/acquire-runtime.test.cjs
           test -f js/common.js
           test -f js/render.js
           test -f js/actions.js
@@ -48,6 +49,7 @@ jobs:
           node --check tests/play-client-runtime.cjs
           node --check tests/search-parser.test.cjs
           node --check tests/checkin-fixed64.test.mjs
+          node --check tests/acquire-runtime.test.cjs
           node --check js/common.js
           node --check js/render.js
           node --check js/actions.js
@@ -56,7 +58,7 @@ jobs:
           node --check worker/google-auth.js
           node --check scripts/build.mjs
       - name: Unit tests
-        run: node --test tests/play-client.test.cjs tests/search-parser.test.cjs tests/worker.test.mjs tests/checkin-fixed64.test.mjs
+        run: node --test tests/play-client.test.cjs tests/search-parser.test.cjs tests/worker.test.mjs tests/checkin-fixed64.test.mjs tests/acquire-runtime.test.cjs
       - name: Verify transport contract
         run: |
           grep -q 'google-play-downloader.basil-as.workers.dev' api-patch.js
@@ -65,6 +67,8 @@ jobs:
           grep -q '/api/health' worker/site-worker.js
           grep -q 'GOOGLE_AAS_TOKEN' worker/google-auth.js
           grep -q 'play.googleapis.com' worker/site-worker.js
+          grep -q '/fdfe\\/acquire' worker/site-worker.js
+          ! grep -q '/fdfe\\/log' worker/site-worker.js
           ! grep -q 'const AURORA_AUTH' worker/site-worker.js
           ! grep -R -nE 'APKCombo|APKPure|APKMirror' index.html js api-patch.js worker || exit 1
       - name: Build static assets
