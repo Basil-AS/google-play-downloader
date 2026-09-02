@@ -1,6 +1,7 @@
 import { directGoogleAuth } from "./google-auth.js";
 
 const GOOGLE_ORIGIN = "https://android.clients.google.com";
+const PLAY_SEARCH_ORIGIN = "https://play-fe.googleapis.com";
 const decoder = new TextDecoder();
 const DELIVERY_BACKOFF_MS = [1000, 3000];
 const MAX_RETRY_AFTER_MS = 30000;
@@ -25,7 +26,7 @@ const ALLOWED_FORWARD_HEADERS = new Set([
   "x-dfe-network-type", "x-dfe-content-filters", "x-limit-ad-tracking-enabled",
   "x-ad-id", "x-dfe-userlanguages", "x-dfe-request-params", "x-dfe-cookie",
   "x-dfe-no-prefetch", "x-dfe-device-checkin-consistency-token",
-  "x-dfe-device-config-token", "x-dfe-mccmnc"
+  "x-dfe-device-config-token", "x-dfe-mccmnc", "x-dfe-phenotype"
 ]);
 
 function corsHeaders(request) {
@@ -39,7 +40,7 @@ function corsHeaders(request) {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Accept,Content-Type,Authorization,Range,X-Play-Headers,X-Play-Country",
-    "Access-Control-Expose-Headers": "Content-Type,Content-Length,Content-Disposition,Accept-Ranges,Content-Range,ETag,Retry-After",
+    "Access-Control-Expose-Headers": "Content-Type,Content-Length,Content-Disposition,Accept-Ranges,Content-Range,ETag,Retry-After,X-Play-Search-Flow",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin"
   };
@@ -121,27 +122,46 @@ function countryFrom(request) {
 function extractSearchListPath(bytes) {
   try {
     const text = decoder.decode(bytes);
-    const matches = [...text.matchAll(/searchList\?[A-Za-z0-9%&_=+.,~\-]+/g)]
-      .map(match => match[0]);
+    const matches = [...text.matchAll(/searchList\?[A-Za-z0-9%&_=+.,~\-]+/g)].map(match => match[0]);
     if (!matches.length) return "";
 
-    // The first /search response usually contains both a short display URL and
-    // the real authenticated continuation. The latter carries ctntkn and is
-    // longer. Following the short URL returns another shell instead of apps.
-    const chosen = matches
-      .slice()
-      .sort((a, b) => {
-        const aToken = a.includes("ctntkn=") ? 1 : 0;
-        const bToken = b.includes("ctntkn=") ? 1 : 0;
-        return bToken - aToken || b.length - a.length;
-      })[0];
+    // Current Phonesky search uses play-fe and a ptkn continuation. Older
+    // android.clients responses may expose ctntkn instead. Prefer ptkn,
+    // retain ctntkn only as a compatibility fallback.
+    const chosen = matches.slice().sort((a, b) => {
+      const score = value => value.includes("ptkn=") ? 3 : value.includes("ctntkn=") ? 2 : 1;
+      return score(b) - score(a) || b.length - a.length;
+    })[0];
 
-    const url = new URL(`/fdfe/${chosen}`, GOOGLE_ORIGIN);
+    const url = new URL(`/fdfe/${chosen}`, PLAY_SEARCH_ORIGIN);
     if (url.pathname !== "/fdfe/searchList") return "";
     return `${url.pathname}${url.search}`;
   } catch {
     return "";
   }
+}
+
+function fdfeTarget(suffix, sourceUrl) {
+  const searchEndpoint = suffix === "/fdfe/search" || suffix === "/fdfe/searchList";
+  const target = new URL(`${suffix}${sourceUrl.search}`, searchEndpoint ? PLAY_SEARCH_ORIGIN : GOOGLE_ORIGIN);
+  if (suffix === "/fdfe/search") {
+    if (!target.searchParams.has("sb")) target.searchParams.set("sb", "5");
+    if (!target.searchParams.has("ksm")) target.searchParams.set("ksm", "1");
+    if (!target.searchParams.has("ps")) target.searchParams.set("ps", "1");
+    if (!target.searchParams.has("nocache_pwr")) target.searchParams.set("nocache_pwr", "true");
+  }
+  return target;
+}
+
+function protobufResponse(bytes, upstream, cors, extraHeaders = {}) {
+  const responseHeaders = new Headers({
+    "Content-Type": upstream.headers.get("Content-Type") || "application/x-protobuf",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff"
+  });
+  applyHeaders(responseHeaders, extraHeaders);
+  applyHeaders(responseHeaders, cors);
+  return new Response(bytes, { status: upstream.status, statusText: upstream.statusText, headers: responseHeaders });
 }
 
 async function proxyCustomDispenser(request, cors, env) {
@@ -190,12 +210,13 @@ async function handleFdfe(request, url, cors) {
   if (!["GET", "POST"].includes(request.method)) return jsonError("Method not allowed", 405, cors);
   const suffix = url.pathname.slice("/api".length);
   if (!ALLOWED_FDFE_PATHS.some(pattern => pattern.test(suffix))) return jsonError("FDFE endpoint not allowed", 403, cors);
-  const target = new URL(`${suffix}${url.search}`, GOOGLE_ORIGIN);
+  const target = fdfeTarget(suffix, url);
   const headers = forwardedHeaders(request);
   if (!headers.get("Accept")) headers.set("Accept", "application/x-protobuf");
   const body = request.method === "POST" ? await request.arrayBuffer() : undefined;
   const maxAttempts = suffix === "/fdfe/delivery" ? 3 : 1;
   let upstream;
+  let searchFlow = "";
   try {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       upstream = await fetch(target.toString(), { method: request.method, headers, body, redirect: "follow" });
@@ -206,16 +227,23 @@ async function handleFdfe(request, url, cors) {
     if (suffix === "/fdfe/search" && request.method === "GET" && upstream.ok) {
       const firstBytes = new Uint8Array(await upstream.arrayBuffer());
       const searchListPath = extractSearchListPath(firstBytes);
+      searchFlow = "play-fe-search";
+
       if (searchListPath) {
-        upstream = await fetch(new URL(searchListPath, GOOGLE_ORIGIN).toString(), {
-          method: "GET",
-          headers,
-          redirect: "follow"
-        });
+        const nextTarget = new URL(searchListPath, PLAY_SEARCH_ORIGIN);
+        if (!nextTarget.searchParams.has("ps")) nextTarget.searchParams.set("ps", "1");
+        const next = await fetch(nextTarget.toString(), { method: "GET", headers, redirect: "follow" });
+        if (next.ok) {
+          upstream = next;
+          searchFlow = nextTarget.searchParams.has("ptkn") ? "play-fe-ptkn" : "play-fe-continuation";
+        } else {
+          // Never turn a usable 200 search shell into DF-DFERH-01 just because
+          // a Google continuation rejected. The client can still parse any docs
+          // present in the initial response.
+          return protobufResponse(firstBytes, upstream, cors, { "X-Play-Search-Flow": "play-fe-continuation-fallback" });
+        }
       } else {
-        const responseHeaders = new Headers({ "Content-Type": upstream.headers.get("Content-Type") || "application/x-protobuf", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
-        applyHeaders(responseHeaders, cors);
-        return new Response(firstBytes, { status: upstream.status, statusText: upstream.statusText, headers: responseHeaders });
+        return protobufResponse(firstBytes, upstream, cors, { "X-Play-Search-Flow": searchFlow });
       }
     }
   } catch {
@@ -224,6 +252,7 @@ async function handleFdfe(request, url, cors) {
   const responseHeaders = new Headers({ "Content-Type": upstream.headers.get("Content-Type") || "application/x-protobuf", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
   const retryAfter = upstream.headers.get("Retry-After");
   if (retryAfter) responseHeaders.set("Retry-After", retryAfter);
+  if (searchFlow) responseHeaders.set("X-Play-Search-Flow", searchFlow);
   applyHeaders(responseHeaders, cors);
   return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers: responseHeaders });
 }
