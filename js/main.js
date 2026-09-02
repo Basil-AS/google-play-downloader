@@ -1,7 +1,7 @@
-import "./runtime-fixes.js?v=20260902-5";
-import { $,dom,state,PACKAGE_RE,PACKAGE_PREFIX_RE,PACKAGE_LIKE_RE,transport } from "./common.js?v=20260902-10";
-import { setStatus,emptyState } from "./render.js?v=20260902-10";
-import { searchApps,updateSuggestions,selectPackage,resolveSelected,makeApks,resetApp } from "./actions.js?v=20260902-9";
+import "./runtime-fixes.js?v=20260902-6";
+import { $,dom,state,PACKAGE_RE,PACKAGE_PREFIX_RE,PACKAGE_LIKE_RE,transport } from "./common.js?v=20260902-11";
+import { setStatus,emptyState } from "./render.js?v=20260902-11";
+import { searchApps,updateSuggestions,selectPackage,resolveSelected,makeApks,resetApp } from "./actions.js?v=20260902-10";
 
 const SEARCH_CACHE_MARKER = "gpd:search:transport-version-v2";
 function invalidateStaleSearchCache(){
@@ -22,7 +22,7 @@ async function resetStatus(){
   const health=await transport.health?.();
   if(!health?.ok){setStatus("Cloudflare Worker недоступен","error");return}
   if(health.authMode==="unconfigured"){setStatus("Worker подключён · Google Play auth не настроен","error");return}
-  const authLabel=health.authMode==="direct-google"?"direct Google auth":health.authMode==="custom-dispenser"?"custom dispenser":health.authMode;
+  const authLabel=health.authMode==="direct-google"?"direct Google auth + anonymous fallback":health.authMode==="custom-dispenser"?"custom dispenser":health.authMode;
   setStatus(`API подключён · ${authLabel}`,"ok");
 }
 function closeSuggestions({abort=true}={}){clearTimeout(suggestionTimer);if(abort){state.suggestionController?.abort();state.suggestionController=null}dom.suggestions.hidden=true}
