@@ -35,7 +35,7 @@ const bytes = (rows, field) => rows.find(([f, w]) => f === field && w === 2)?.[2
 const integer = (rows, field) => rows.find(([f, w]) => f === field && w === 0)?.[2];
 const string = (rows, field) => new TextDecoder().decode(bytes(rows, field) || new Uint8Array());
 
-test("runtime uses modern /fdfe/acquire protobuf before purchase", async () => {
+test("runtime uses acquire -> query purchase -> delivery", async () => {
   const calls = [];
   const baseClient = {
     buildHeaders: () => ({ Authorization: "Bearer test" }),
@@ -45,7 +45,13 @@ test("runtime uses modern /fdfe/acquire protobuf before purchase", async () => {
       app: { package: packageName, versionCode: 2 },
       raw: new Uint8Array()
     }),
-    resolve: async () => ({ ok: true }),
+    parsePurchase: () => "delivery-token",
+    parseDelivery: () => ({
+      versionCode: 2,
+      base: { name: "base.apk", url: "https://play.googleapis.com/download/base.apk", cookies: [] },
+      splits: [],
+      additional: []
+    }),
     search: async () => []
   };
   const sessionStorage = {
@@ -57,21 +63,23 @@ test("runtime uses modern /fdfe/acquire protobuf before purchase", async () => {
     GooglePlayClient: baseClient,
     fetch: async (url, init = {}) => {
       calls.push({ url: String(url), init });
-      return new Response(new Uint8Array(), { status: 200 });
+      return new Response(new Uint8Array([1]), { status: 200 });
     }
   };
   class MutationObserver { observe() {} }
   const document = { documentElement: {}, querySelectorAll: () => [] };
   const context = vm.createContext({
     window, document, MutationObserver, sessionStorage,
-    TextEncoder, TextDecoder, URL, Uint8Array, Response,
+    TextEncoder, TextDecoder, URL, URLSearchParams, Uint8Array, Response,
     crypto: webcrypto, btoa, console, Math, BigInt
   });
   context.globalThis = context;
   vm.runInContext(fs.readFileSync("js/runtime-fixes.js", "utf8"), context);
 
-  await window.GooglePlayClient.resolve("com.arslan.vkdatingapp1", "arm64", {});
-  assert.equal(calls.length, 1);
+  const result = await window.GooglePlayClient.resolve("com.arslan.vkdatingapp1", "arm64", {});
+  assert.equal(result.delivery.base.name, "com.arslan.vkdatingapp1-2.apk");
+  assert.equal(calls.length, 3);
+
   assert.equal(calls[0].url, "https://android.clients.google.com/fdfe/acquire");
   assert.equal(calls[0].init.method, "POST");
   assert.equal(calls[0].init.headers["Content-Type"], "application/x-protobuf");
@@ -94,4 +102,20 @@ test("runtime uses modern /fdfe/acquire protobuf before purchase", async () => {
   assert.equal(integer(top, 25), 2);
   assert.equal(integer(m30, 1), 2);
   assert.equal(integer(m30, 2), 0);
+
+  const purchase = new URL(calls[1].url);
+  assert.equal(purchase.pathname, "/fdfe/purchase");
+  assert.equal(purchase.searchParams.get("doc"), "com.arslan.vkdatingapp1");
+  assert.equal(purchase.searchParams.get("ot"), "1");
+  assert.equal(purchase.searchParams.get("vc"), "2");
+  assert.equal(calls[1].init.method, "POST");
+  assert.equal(calls[1].init.body, undefined);
+
+  const delivery = new URL(calls[2].url);
+  assert.equal(delivery.pathname, "/fdfe/delivery");
+  assert.equal(delivery.searchParams.get("doc"), "com.arslan.vkdatingapp1");
+  assert.equal(delivery.searchParams.get("ot"), "1");
+  assert.equal(delivery.searchParams.get("vc"), "2");
+  assert.equal(delivery.searchParams.get("dtok"), "delivery-token");
+  assert.equal(calls[2].init.method, "GET");
 });
