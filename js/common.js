@@ -1,5 +1,3 @@
-import "./runtime-fixes.js?v=20260902-5";
-
 export const P = window.GooglePlayClient;
 export const transport = window.PlayTransport;
 
