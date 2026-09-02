@@ -1,6 +1,17 @@
-import { $,dom,state,PACKAGE_RE,PACKAGE_PREFIX_RE,PACKAGE_LIKE_RE,transport } from "./common.js";
-import { setStatus,emptyState } from "./render.js";
-import { searchApps,updateSuggestions,selectPackage,resolveSelected,makeApks,resetApp } from "./actions.js";
+import { $,dom,state,PACKAGE_RE,PACKAGE_PREFIX_RE,PACKAGE_LIKE_RE,transport } from "./common.js?v=20260902-7";
+import { setStatus,emptyState } from "./render.js?v=20260902-7";
+import { searchApps,updateSuggestions,selectPackage,resolveSelected,makeApks,resetApp } from "./actions.js?v=20260902-7";
+
+const SEARCH_CACHE_MARKER = "gpd:search:transport-version";
+function invalidateStaleSearchCache(){
+  try{
+    const version=String(transport?.version||"unknown");
+    if(sessionStorage.getItem(SEARCH_CACHE_MARKER)===version)return;
+    for(const key of Object.keys(sessionStorage))if(key.startsWith("gpd:search:"))sessionStorage.removeItem(key);
+    sessionStorage.setItem(SEARCH_CACHE_MARKER,version);
+    state.searchCache.clear();
+  }catch{}
+}
 
 let searchTimer,suggestionTimer;
 function transportLabel(mode){return({"cloudflare-workers":"Cloudflare Workers","github-pages-via-cloudflare":"GitHub Pages + Cloudflare","local-via-cloudflare":"Local + Cloudflare","external-cloudflare":"Cloudflare backend"})[mode]||mode||"API"}
@@ -31,6 +42,7 @@ $("#selectAllArch").addEventListener("click",()=>document.querySelectorAll('inpu
 $("#onlyArm64").addEventListener("click",()=>document.querySelectorAll('input[name="arch"]').forEach(node=>{node.checked=node.value==="arm64"}));
 $("#resetApp").addEventListener("click",()=>{resetApp();dom.searchInput.focus()});
 document.addEventListener("keydown",event=>{if(event.key==="Escape"){closeSuggestions();closeHelpTips()}});
+invalidateStaleSearchCache();
 setupHelpTips();
 resetStatus();
 const packageFromUrl=new URLSearchParams(location.search).get("package");
