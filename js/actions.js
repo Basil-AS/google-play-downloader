@@ -3,12 +3,12 @@ import {
   PACKAGE_RE, PACKAGE_PREFIX_RE, PACKAGE_LIKE_RE,
   normalize, extractPackage, escapeHtml,
   fileRows, selectedArchitectures, settings
-} from "./common.js?v=20260902-8";
+} from "./common.js?v=20260902-9";
 import {
   setStatus, emptyState, loadingState, showError,
   startProgress, progress, stopProgress,
   renderResults, renderSelectedApp, renderResolved
-} from "./render.js?v=20260902-8";
+} from "./render.js?v=20260902-10";
 
 const SEARCH_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_PREFIX = `gpd:search:${String(transport?.version || "unknown")}:`;
