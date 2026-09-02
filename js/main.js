@@ -1,6 +1,6 @@
 import "./runtime-fixes.js?v=20260902-1";
 import { $,dom,state,PACKAGE_RE,PACKAGE_PREFIX_RE,PACKAGE_LIKE_RE,transport } from "./common.js?v=20260902-8";
-import { setStatus,emptyState } from "./render.js?v=20260902-8";
+import { setStatus,emptyState } from "./render.js?v=20260902-9";
 import { searchApps,updateSuggestions,selectPackage,resolveSelected,makeApks,resetApp } from "./actions.js?v=20260902-8";
 
 const SEARCH_CACHE_MARKER = "gpd:search:transport-version-v2";
