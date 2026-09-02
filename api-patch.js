@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260901-3";
+  const VERSION = "20260902-4";
   const WORKER_ORIGIN = "https://google-play-downloader.basil-as.workers.dev";
   const nativeFetch = window.fetch.bind(window);
   const COUNTRY_MCC = Object.freeze({
@@ -72,6 +72,16 @@
     if (profileOptions.country && isFdfe(url) && !url.searchParams.has("gl")) url.searchParams.set("gl", profileOptions.country);
     return url;
   }
+  function normalizeFdfeSearch(url) {
+    if (url.pathname === "/fdfe/search") {
+      url.pathname = "/fdfe/searchList";
+      for (const key of [...url.searchParams.keys()]) {
+        if (!["q", "c", "gl"].includes(key)) url.searchParams.delete(key);
+      }
+      if (!url.searchParams.has("c")) url.searchParams.set("c", "3");
+    }
+    return url;
+  }
   function isGoogleDownload(url) {
     const host = url.hostname.toLowerCase();
     return url.protocol === "https:" && (
@@ -110,6 +120,7 @@
     if (isLegacyAuth(target)) return authFetch(init.body, { ...init, headers });
     if (isFdfe(target)) {
       applyCountry(target);
+      normalizeFdfeSearch(target);
       const suffix = `${target.pathname.slice("/fdfe".length)}${target.search}`;
       return workerFetch(`/api/fdfe${suffix}`, { ...init, headers });
     }
