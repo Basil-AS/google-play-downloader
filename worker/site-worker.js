@@ -125,9 +125,6 @@ function extractSearchListPath(bytes) {
     const matches = [...text.matchAll(/searchList\?[A-Za-z0-9%&_=+.,~\-]+/g)].map(match => match[0]);
     if (!matches.length) return "";
 
-    // Current Phonesky search uses play-fe and a ptkn continuation. Older
-    // android.clients responses may expose ctntkn instead. Prefer ptkn,
-    // retain ctntkn only as a compatibility fallback.
     const chosen = matches.slice().sort((a, b) => {
       const score = value => value.includes("ptkn=") ? 3 : value.includes("ctntkn=") ? 2 : 1;
       return score(b) - score(a) || b.length - a.length;
@@ -151,6 +148,24 @@ function fdfeTarget(suffix, sourceUrl) {
     if (!target.searchParams.has("nocache_pwr")) target.searchParams.set("nocache_pwr", "true");
   }
   return target;
+}
+
+function androidSearchListTarget(sourceUrl) {
+  const target = new URL("/fdfe/searchList", GOOGLE_ORIGIN);
+  for (const key of ["q", "c", "gl"]) {
+    const value = sourceUrl.searchParams.get(key);
+    if (value !== null && value !== "") target.searchParams.set(key, value);
+  }
+  if (!target.searchParams.has("c")) target.searchParams.set("c", "3");
+  return target;
+}
+
+async function fetchAndroidSearchFallback(sourceUrl, headers) {
+  return fetch(androidSearchListTarget(sourceUrl).toString(), {
+    method: "GET",
+    headers,
+    redirect: "follow"
+  });
 }
 
 function protobufResponse(bytes, upstream, cors, extraHeaders = {}) {
@@ -224,26 +239,37 @@ async function handleFdfe(request, url, cors) {
       await sleep(retryDelayMs(upstream.headers, DELIVERY_BACKOFF_MS[attempt] || 3000));
     }
 
-    if (suffix === "/fdfe/search" && request.method === "GET" && upstream.ok) {
-      const firstBytes = new Uint8Array(await upstream.arrayBuffer());
-      const searchListPath = extractSearchListPath(firstBytes);
-      searchFlow = "play-fe-search";
-
-      if (searchListPath) {
-        const nextTarget = new URL(searchListPath, PLAY_SEARCH_ORIGIN);
-        if (!nextTarget.searchParams.has("ps")) nextTarget.searchParams.set("ps", "1");
-        const next = await fetch(nextTarget.toString(), { method: "GET", headers, redirect: "follow" });
-        if (next.ok) {
-          upstream = next;
-          searchFlow = nextTarget.searchParams.has("ptkn") ? "play-fe-ptkn" : "play-fe-continuation";
-        } else {
-          // Never turn a usable 200 search shell into DF-DFERH-01 just because
-          // a Google continuation rejected. The client can still parse any docs
-          // present in the initial response.
-          return protobufResponse(firstBytes, upstream, cors, { "X-Play-Search-Flow": "play-fe-continuation-fallback" });
+    if (suffix === "/fdfe/search" && request.method === "GET") {
+      if (!upstream.ok) {
+        const fallback = await fetchAndroidSearchFallback(url, headers);
+        if (fallback.ok) {
+          upstream = fallback;
+          searchFlow = "android-searchList-fallback";
         }
       } else {
-        return protobufResponse(firstBytes, upstream, cors, { "X-Play-Search-Flow": searchFlow });
+        const firstBytes = new Uint8Array(await upstream.arrayBuffer());
+        const searchListPath = extractSearchListPath(firstBytes);
+        searchFlow = "play-fe-search";
+
+        if (searchListPath) {
+          const nextTarget = new URL(searchListPath, PLAY_SEARCH_ORIGIN);
+          if (!nextTarget.searchParams.has("ps")) nextTarget.searchParams.set("ps", "1");
+          const next = await fetch(nextTarget.toString(), { method: "GET", headers, redirect: "follow" });
+          if (next.ok) {
+            upstream = next;
+            searchFlow = nextTarget.searchParams.has("ptkn") ? "play-fe-ptkn" : "play-fe-continuation";
+          } else {
+            const fallback = await fetchAndroidSearchFallback(url, headers);
+            if (fallback.ok) {
+              upstream = fallback;
+              searchFlow = "android-searchList-fallback";
+            } else {
+              return protobufResponse(firstBytes, upstream, cors, { "X-Play-Search-Flow": "play-fe-continuation-fallback" });
+            }
+          }
+        } else {
+          return protobufResponse(firstBytes, upstream, cors, { "X-Play-Search-Flow": searchFlow });
+        }
       }
     }
   } catch {
