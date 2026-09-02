@@ -1,27 +1,37 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260902-6";
+  const VERSION = "20260902-7";
   const WORKER_ORIGIN = "https://google-play-downloader.basil-as.workers.dev";
   const nativeFetch = window.fetch.bind(window);
   const COUNTRY_MCC = Object.freeze({
     US: ["310", "38"], IN: ["404", "20"], GB: ["234", "30"],
     DE: ["262", "01"], RU: ["250", "01"]
   });
+  const PROFILE_SIGNATURE_KEY = "gpd:play-auth-profile";
 
   let profileOptions = { locale: "ru-RU", density: "", country: "" };
 
-  function clearSearchCacheForVersion() {
+  function clearAuthCache() {
+    try {
+      Object.keys(localStorage).filter(key => key.startsWith("gpd:play-auth:v1:")).forEach(key => localStorage.removeItem(key));
+    } catch {}
+  }
+
+  function clearCachesForVersion() {
     try {
       const versionKey = "gpd:transport-version";
-      if (sessionStorage.getItem(versionKey) === VERSION) return;
+      if (localStorage.getItem(versionKey) !== VERSION) {
+        clearAuthCache();
+        localStorage.removeItem(PROFILE_SIGNATURE_KEY);
+        localStorage.setItem(versionKey, VERSION);
+      }
       Object.keys(sessionStorage)
         .filter(key => key.startsWith("gpd:search:"))
         .forEach(key => sessionStorage.removeItem(key));
-      sessionStorage.setItem(versionKey, VERSION);
     } catch {}
   }
-  clearSearchCacheForVersion();
+  clearCachesForVersion();
 
   function hostname() { return String(location?.hostname || ""); }
   function mode() {
@@ -66,6 +76,9 @@
         const mccMnc = `${operator[0]}${operator[1]}`;
         profile.CellOperator = mccMnc;
         profile.SimOperator = mccMnc;
+      } else {
+        // Auto must not silently inherit a country-specific MCC/MNC from a
+        // previous cached profile. Keep the base device values untouched.
       }
       return JSON.stringify(profile);
     } catch {
@@ -147,10 +160,8 @@
     return apiUrl(`/api/download?${params}`);
   }
 
-  function clearAuthCache() {
-    try {
-      Object.keys(localStorage).filter(key => key.startsWith("gpd:play-auth:v1:")).forEach(key => localStorage.removeItem(key));
-    } catch {}
+  function profileSignature(value) {
+    return `${value.country}|${value.locale}|${value.density}`;
   }
   function setProfileOptions(next = {}) {
     const normalized = {
@@ -158,9 +169,13 @@
       density: next.density ? String(next.density) : "",
       country: String(next.country || "").trim().toUpperCase()
     };
-    const changed = normalized.locale !== profileOptions.locale || normalized.density !== profileOptions.density || normalized.country !== profileOptions.country;
+    const signature = profileSignature(normalized);
+    let persisted = "";
+    try { persisted = localStorage.getItem(PROFILE_SIGNATURE_KEY) || ""; } catch {}
+    const changed = signature !== profileSignature(profileOptions) || signature !== persisted;
     profileOptions = normalized;
     if (changed) clearAuthCache();
+    try { localStorage.setItem(PROFILE_SIGNATURE_KEY, signature); } catch {}
     return changed;
   }
 
