@@ -1,9 +1,9 @@
-import "./runtime-fixes.js?v=20260902-2";
+import "./runtime-fixes.js?v=20260902-5";
 
 export const P = window.GooglePlayClient;
 export const transport = window.PlayTransport;
 
-export const PACKAGE_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
+export const PACKAGE_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]*)+$/;
 export const PACKAGE_PREFIX_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+\.$/;
 export const PACKAGE_LIKE_RE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]*)+$/;
 
