@@ -159,6 +159,23 @@
 
   function findDocs(raw, depth = 0, out = []) { if (depth > 10) return out; let fields; try { fields = new ProtoDecoder(raw).readAll(); } catch { return out; } const pkg = firstString(fields, 1), title = firstString(fields, 5); if (PACKAGE_RE.test(pkg) && title) { out.push({ package: pkg, title, developer: firstString(fields, 6) }); return out; } for (const [, wt, v] of fields) if (wt === 2 && v instanceof Uint8Array && v.length > 20) findDocs(v, depth + 1, out); return out; }
 
+  function parseSearch(raw) {
+    let rootFields;
+    try { rootFields = new ProtoDecoder(raw).readAll(); } catch { return []; }
+    const rows = [];
+    for (const item of allBytes(rootFields, 11)) {
+      const packageFields = navigate(item, 2, 1);
+      const titleFields = navigate(item, 2, 2, 1);
+      const developerFields = navigate(item, 2, 3, 14);
+      const pkg = firstString(packageFields, 1);
+      const title = firstString(titleFields, 1);
+      if (!PACKAGE_RE.test(pkg) || !title) continue;
+      rows.push({ package: pkg, title, developer: firstString(developerFields, 1) });
+    }
+    if (rows.length) return rows;
+    return findDocs(raw);
+  }
+
   async function fdfe(path, auth, options = {}) {
     const headers = buildHeaders(auth, options.country); if (options.method === 'POST') headers['Content-Type'] = options.contentType || 'application/x-www-form-urlencoded';
     const response = await relayFetch(`${FDFE}${path}`, { method: options.method || 'GET', headers, body: options.body }, { signal: options.signal, timeoutMs: options.timeoutMs || REQUEST_TIMEOUT_MS });
@@ -166,9 +183,9 @@
   }
 
   async function details(packageName, arch = 'arm64', options = {}) { const auth = options.auth || await getAuth(arch, options); const raw = await fdfe(`/details?doc=${encodeURIComponent(packageName)}`, auth, options); const app = parseDetails(raw); if (!app?.package) throw new Error('Google Play не вернул карточку приложения для этого профиля'); return { auth, app, raw }; }
-  async function search(query, arch = 'arm64', options = {}) { const packageName = extractPackage(query); if (packageName) { const { app } = await details(packageName, arch, options); return [app]; } const auth = options.auth || await getAuth(arch, options); const raw = await fdfe(`/search?q=${encodeURIComponent(query)}&c=3`, auth, options); const seen = new Set(); return findDocs(raw).filter((d) => { if (seen.has(d.package)) return false; seen.add(d.package); return true; }).slice(0, 15); }
+  async function search(query, arch = 'arm64', options = {}) { const packageName = extractPackage(query); if (packageName) { const { app } = await details(packageName, arch, options); return [app]; } const auth = options.auth || await getAuth(arch, options); const raw = await fdfe(`/search?q=${encodeURIComponent(query)}&c=3`, auth, options); const seen = new Set(); return parseSearch(raw).filter((d) => { if (seen.has(d.package)) return false; seen.add(d.package); return true; }).slice(0, 15); }
   async function resolve(packageName, arch = 'arm64', options = {}) { const { auth, app } = await details(packageName, arch, options); const body = `doc=${encodeURIComponent(packageName)}&ot=1&vc=${encodeURIComponent(app.versionCode)}`; const purchaseRaw = await fdfe('/purchase', auth, { ...options, method: 'POST', body, contentType: 'application/x-www-form-urlencoded' }); const token = parsePurchase(purchaseRaw); const deliveryRaw = await fdfe(`/delivery?doc=${encodeURIComponent(packageName)}&ot=1&vc=${encodeURIComponent(app.versionCode)}${token ? `&dtok=${encodeURIComponent(token)}` : ''}`, auth, options); const delivery = parseDelivery(deliveryRaw); if (!delivery.base.url) throw new Error('Google Play не вернул download URL для этого профиля/версии'); delivery.versionCode ||= app.versionCode; delivery.base.name = `${packageName}-${delivery.versionCode}.apk`; delivery.splits.forEach((s) => { s.name = `${packageName}-${delivery.versionCode}-${s.name}.apk`; }); return { arch, app, delivery }; }
   function downloadRelayUrl(file) { const headers = {}; if (file.cookies?.length) headers.Cookie = file.cookies.map((c) => `${c.name}=${c.value}`).join('; '); return relayUrl(file.url, headers); }
 
-  return Object.freeze({ ARCH: Object.keys(ARCH), profileFor, extractPackage, relayUrl, getAuth, buildHeaders, ProtoDecoder, parseDetails, parsePurchase, parseDelivery, search, details, resolve, downloadRelayUrl });
+  return Object.freeze({ ARCH: Object.keys(ARCH), profileFor, extractPackage, relayUrl, getAuth, buildHeaders, ProtoDecoder, parseDetails, parsePurchase, parseDelivery, parseSearch, search, details, resolve, downloadRelayUrl });
 });
