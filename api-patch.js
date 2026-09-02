@@ -11,6 +11,18 @@
 
   let profileOptions = { locale: "ru-RU", density: "", country: "" };
 
+  function clearSearchCacheForVersion() {
+    try {
+      const versionKey = "gpd:transport-version";
+      if (sessionStorage.getItem(versionKey) === VERSION) return;
+      Object.keys(sessionStorage)
+        .filter(key => key.startsWith("gpd:search:"))
+        .forEach(key => sessionStorage.removeItem(key));
+      sessionStorage.setItem(versionKey, VERSION);
+    } catch {}
+  }
+  clearSearchCacheForVersion();
+
   function hostname() { return String(location?.hostname || ""); }
   function mode() {
     const host = hostname();
