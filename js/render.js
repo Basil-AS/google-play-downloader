@@ -1,4 +1,4 @@
-import { dom,state,escapeHtml,formatBytes,fileRows,transport } from "./common.js?v=20260902-7";
+import { dom,state,escapeHtml,formatBytes,fileRows,transport } from "./common.js?v=20260902-8";
 export function setStatus(text,kind="neutral"){dom.apiStatus.textContent=text;dom.apiStatus.dataset.kind=kind}
 export function emptyState(title,text){dom.results.innerHTML=`<div class="empty-state"><div class="empty-state-icon">APK</div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(text)}</p></div>`}
 export function loadingState(text="Ищем приложения…"){dom.results.innerHTML=`<div class="loading-state"><span class="spinner" aria-hidden="true"></span><strong>${escapeHtml(text)}</strong></div>`}
