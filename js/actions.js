@@ -1,18 +1,18 @@
 import {
   P, transport, state, dom,
   PACKAGE_RE, PACKAGE_PREFIX_RE, PACKAGE_LIKE_RE,
-  normalize, searchTokens, extractPackage, escapeHtml,
+  normalize, extractPackage, escapeHtml,
   fileRows, selectedArchitectures, settings
-} from "./common.js?v=20260902-7";
+} from "./common.js?v=20260902-8";
 import {
   setStatus, emptyState, loadingState, showError,
   startProgress, progress, stopProgress,
   renderResults, renderSelectedApp, renderResolved
-} from "./render.js?v=20260902-7";
+} from "./render.js?v=20260902-8";
 
 const SEARCH_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_PREFIX = `gpd:search:${String(transport?.version || "unknown")}:`;
-const MAX_VISIBLE_RESULTS = 8;
+const MAX_VISIBLE_RESULTS = 15;
 const ARCH_LABELS = {
   arm64: "ARM64", armv7: "ARMv7", x86_64: "x86_64", x86: "x86", tv: "Android TV"
 };
@@ -75,41 +75,11 @@ async function cachedSearch(query, signal, cfg, fresh = false) {
   return rows;
 }
 
-function relevanceScore(app, query) {
-  const q = normalize(query);
-  const title = normalize(app.title);
-  const pkg = normalize(app.package);
-  const developer = normalize(app.developer);
-  if (!q) return 0;
-  if (pkg === q) return 10000;
-  if (title === q) return 9500;
-  if (title.startsWith(q)) return 8200;
-  if (pkg.startsWith(q)) return 7800;
-  if (title.includes(q)) return 6800;
-  if (pkg.includes(q)) return 6400;
-
-  const tokens = searchTokens(q);
-  if (!tokens.length) return 0;
-  const titleHits = tokens.filter(token => title.includes(token)).length;
-  const packageHits = tokens.filter(token => pkg.includes(token)).length;
-  const developerHits = tokens.filter(token => developer.includes(token)).length;
-  if (titleHits === tokens.length) return 5200 + titleHits * 100;
-  if (packageHits === tokens.length) return 4800 + packageHits * 100;
-  if (titleHits + packageHits === tokens.length) return 4200 + (titleHits + packageHits) * 100;
-  if (titleHits || packageHits) return 2600 + titleHits * 200 + packageHits * 150;
-  if (developerHits === tokens.length) return 1800;
-  return 0;
-}
-
-function cleanResults(rows, query) {
+function cleanResults(rows) {
   const seen = new Set();
   return rows
     .filter(row => row?.package && !seen.has(row.package) && seen.add(row.package))
-    .map((app, index) => ({ app, index, score: relevanceScore(app, query) }))
-    .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .slice(0, MAX_VISIBLE_RESULTS)
-    .map(item => item.app);
+    .slice(0, MAX_VISIBLE_RESULTS);
 }
 
 function packagePrefixSeed(prefix) {
@@ -199,7 +169,7 @@ export async function searchApps(query) {
   const profileChanged = configureTransport(cfg);
   loadingState(PACKAGE_PREFIX_RE.test(trimmed)
     ? `Ищем package prefix ${trimmed}*…`
-    : "Ищем наиболее релевантные приложения…");
+    : "Ищем приложения в Google Play…");
   setStatus("Google Play: search…", "loading");
   startProgress("Google Play auth → FDFE search…");
 
@@ -221,15 +191,15 @@ export async function searchApps(query) {
 
     rows = await cachedSearch(trimmed, controller.signal, cfg, profileChanged);
     if (controller.signal.aborted || state.query !== trimmed) return;
-    const apps = cleanResults(rows, trimmed);
+    const apps = cleanResults(rows);
     if (!apps.length) {
-      emptyState("Ничего релевантного не найдено",
-        "Попробуйте точнее сформулировать название или вставьте полный package name / ссылку Google Play.");
+      emptyState("Google Play не вернул карточки приложений",
+        "Попробуйте другой запрос или полный package name / ссылку Google Play.");
       setStatus("Результатов нет");
       return;
     }
     renderResults(apps);
-    setStatus(`Показано: ${apps.length}`, "ok");
+    setStatus(`Google Play вернул: ${apps.length}`, "ok");
   } catch (error) {
     if (error?.name === "AbortError") return;
     console.error(error);
@@ -257,7 +227,7 @@ export async function updateSuggestions(query) {
         dom.searchInput.value.trim() !== query ||
         document.activeElement !== dom.searchInput) return;
 
-    const suggestions = cleanResults(rows, query).slice(0, 5);
+    const suggestions = cleanResults(rows).slice(0, 5);
     dom.suggestions.innerHTML = suggestions.map(item =>
       `<button type="button" data-suggestion-package="${escapeHtml(item.package)}">` +
       `<span>${escapeHtml(item.title || item.package)}</span>` +
