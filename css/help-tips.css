@@ -1,0 +1,25 @@
+/* Help tooltips: pointer input must only react on the 18x18 help button itself. */
+.legend-inline,.field-title{pointer-events:none}
+.legend-inline>.help-tip,.field-title>.help-tip{pointer-events:auto}
+.help-tip{box-sizing:border-box;align-self:center;flex:0 0 18px!important;width:18px!important;height:18px!important;min-width:18px!important;max-width:18px!important;min-height:18px!important;max-height:18px!important;cursor:help}
+
+/* Desktop/mouse: never keep a tooltip latched open via aria-expanded.
+   It is visible only while the pointer is directly over the help button.
+   Keyboard focus remains accessible. */
+@media (hover:hover) and (pointer:fine){
+  .help-tip[aria-expanded="true"]{color:var(--primary);border-color:#b9d7c5;background:#f4faf6}
+  .help-tip[aria-expanded="true"]::after{opacity:0;visibility:hidden;transform:translate(-50%,5px)}
+  .help-tip:hover,.help-tip:focus-visible{color:#fff;border-color:var(--primary);background:var(--primary)}
+  .help-tip:hover::after,.help-tip:focus-visible::after{opacity:1;visibility:visible;transform:translate(-50%,0)}
+}
+
+/* Touch/coarse pointers keep the existing tap-to-toggle behaviour. */
+@media (hover:none),(pointer:coarse){
+  .help-tip[aria-expanded="true"]{color:#fff;border-color:var(--primary);background:var(--primary)}
+  .help-tip[aria-expanded="true"]::after{opacity:1;visibility:visible}
+}
+
+@media (max-width:680px) and (hover:hover) and (pointer:fine){
+  .help-tip[aria-expanded="true"]::after{transform:translateY(5px)}
+  .help-tip:hover::after,.help-tip:focus-visible::after{transform:translateY(0)}
+}
